@@ -1,0 +1,30 @@
+[package]
+name = "plc_service"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+jsonschema = "0"
+bytes = "1"
+tracing = "0"
+tracing-subscriber = { version = "0", features = ["env-filter", "fmt", "std", "local-time", "time"] }
+chrono = "0.4"
+serialport = "4"
+clap = "4"
+syslog-tracing = "0"
+anyhow = "1"
+thiserror = "1.0"
+paho-mqtt = { version = "0.12", default-features=false, features=["bundled"] }
+lazy_static = "1"
+compile-time = "0.2.0"
+time = "0"
+
+
+[build-dependencies]
+vergen = { version = "7.4.2", default-features = false, features = [
+    "build",
+    "git",
+] }
+anyhow = "1"

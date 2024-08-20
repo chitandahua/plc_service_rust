@@ -2,12 +2,13 @@ use anyhow::ensure;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::fmt;
 use std::fmt::Formatter;
+use std::io::Cursor;
 use std::sync::atomic::{AtomicU8, Ordering};
 use strum_macros::{EnumString, ToString};
 use thiserror::Error;
 
 use crate::protocol::app_data::{Afn, AnswerFn};
-use crate::protocol::{AppData, UserData};
+use crate::protocol::{info_field, AppData, UserData};
 use crate::Result;
 
 #[derive(Debug, Clone)]
@@ -83,7 +84,7 @@ enum Comm {
     Centralize = 1,
     #[strum(serialize = "Decentralize")]
     Decentralize = 2,
-    #[strum(serialize = "HPLC")]
+    #[strum(serialize = "Hplc")]
     Hplc = 3,
     #[strum(serialize = "LowerPower")]
     LowerPower = 10,
@@ -114,6 +115,13 @@ impl CtrlField {
             dir: Dir::Down,
             prm: if is_response { Prm::Slave } else { Prm::Master },
             comm: Comm::Hplc,
+        }
+    }
+
+    fn get_info_field_type(&self) -> info_field::InfoFieldType {
+        match self.dir {
+            Dir::Down => info_field::InfoFieldType::Down,
+            Dir::Up => info_field::InfoFieldType::Up,
         }
     }
 }
@@ -222,11 +230,15 @@ impl Frame {
             checksum: Default::default(),
             tail: Default::default(),
         };
-        let bytes: Vec<u8> = frame.clone().into();
+        let bytes = frame.to_bytes();
         frame.checksum = Checksum::new(calc_checksum(
             &bytes[CTRL_FIELD_OFFSET..bytes.len() - LAST_SIZE],
         ));
         frame
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.clone().into()
     }
 
     pub fn new_request(app_data: AppData) -> Self {
@@ -258,6 +270,32 @@ impl Frame {
     pub fn is_master_response(&self) -> bool {
         self.ctrl_field.dir == Dir::Down && self.ctrl_field.prm == Prm::Slave
     }
+
+    pub fn parse(src: &mut Cursor<&[u8]>) -> Result<Option<Self>> {
+        let end = src.get_ref().len();
+
+        // header 不匹配的则直接移除
+        while src.position() < end as u64 && src.get_ref()[src.position() as usize] != HEADER {
+            src.set_position((src.position() + 1) as u64);
+        }
+
+        // 判断长度
+        let start = src.position() as usize;
+        if end - start < HEADER_SIZE {
+            return Ok(None);
+        }
+        let length = u16::from_le_bytes(src.get_ref()[1..HEADER_SIZE].try_into()?) as usize;
+        if end - start < length {
+            return Ok(None);
+        }
+
+        src.set_position(src.position() + length as u64);
+        Ok(Some(src.get_ref()[start..start + length].try_into()?))
+    }
+
+    pub fn get_seq(&self) -> u8 {
+        self.user_data.get_seq()
+    }
 }
 
 #[derive(Error, Debug, PartialEq, EnumString)]
@@ -284,9 +322,12 @@ impl TryFrom<&[u8]> for Frame {
             FrameError::Length(bytes.len())
         );
         // ctrl field
-        let ctrl_field = bytes[CTRL_FIELD_OFFSET].try_into()?;
+        let ctrl_field: CtrlField = bytes[CTRL_FIELD_OFFSET].try_into()?;
         // user data
-        let user_data = UserData::try_from(&bytes[USER_DATA_OFFSET..bytes.len() - LAST_SIZE])?;
+        let user_data = UserData::from_bytes(
+            ctrl_field.get_info_field_type(),
+            &bytes[USER_DATA_OFFSET..bytes.len() - LAST_SIZE],
+        )?;
         // checksum
         let checksum = bytes[bytes.len() - LAST_SIZE];
         let calc_checksum = calc_checksum(&bytes[CTRL_FIELD_OFFSET..bytes.len() - LAST_SIZE]);
@@ -330,5 +371,230 @@ impl fmt::Display for Frame {
         writeln!(f, "user_data:")?;
         writeln!(f, "{}", self.user_data)?;
         writeln!(f, "checksum: {}", self.checksum.checksum)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use info_field::InfoFieldType;
+
+    use super::*;
+    use crate::protocol::app_data::{tests_common, Afn};
+
+    fn create_dummy_app_data() -> AppData {
+        AppData::new(Afn::QueryData, 1, Some(vec![0x01, 0x02, 0x03]))
+    }
+
+    #[test]
+    fn test_frame_new_request() {
+        let app_data = create_dummy_app_data();
+        let frame = Frame::new_request(app_data.clone());
+
+        assert_eq!(frame.ctrl_field.dir, Dir::Down);
+        assert_eq!(frame.ctrl_field.prm, Prm::Master);
+        assert_eq!(frame.user_data.app_data, app_data);
+        assert_eq!(frame.tail.tail, TAIL);
+    }
+
+    #[test]
+    fn test_frame_new_response() {
+        let app_data = create_dummy_app_data();
+        let frame = Frame::new_response(5, app_data.clone());
+
+        assert_eq!(frame.ctrl_field.dir, Dir::Down);
+        assert_eq!(frame.ctrl_field.prm, Prm::Slave);
+        assert_eq!(frame.user_data.app_data, app_data);
+        assert_eq!(frame.get_seq(), 5);
+        assert_eq!(frame.tail.tail, TAIL);
+    }
+
+    #[test]
+    fn test_frame_to_bytes_and_back() {
+        let original_frame = Frame::new_request(create_dummy_app_data());
+        let bytes = original_frame.to_bytes();
+        let reconstructed_frame = Frame::try_from(bytes.as_slice()).unwrap();
+
+        assert_eq!(
+            original_frame.user_data.app_data,
+            reconstructed_frame.user_data.app_data
+        );
+        assert_eq!(
+            original_frame.ctrl_field.dir,
+            reconstructed_frame.ctrl_field.dir
+        );
+        assert_eq!(
+            original_frame.ctrl_field.prm,
+            reconstructed_frame.ctrl_field.prm
+        );
+    }
+
+    #[test]
+    fn test_frame_checksum() {
+        let frame = Frame::new_request(create_dummy_app_data());
+        let bytes = frame.to_bytes();
+        let calculated_checksum = calc_checksum(&bytes[CTRL_FIELD_OFFSET..bytes.len() - LAST_SIZE]);
+        assert_eq!(frame.checksum.checksum, calculated_checksum);
+    }
+
+    #[test]
+    fn test_frame_parse_valid() {
+        let frame = Frame::new_request(create_dummy_app_data());
+        let bytes = frame.to_bytes();
+        let mut cursor = Cursor::new(bytes.as_slice());
+        //println!("bytes: {}", hex::encode(&bytes));
+        let parsed_frame = Frame::parse(&mut cursor).unwrap().unwrap();
+        assert_eq!(frame.user_data.app_data, parsed_frame.user_data.app_data);
+    }
+
+    #[test]
+    fn test_frame_parse_invalid_header() {
+        let mut invalid_bytes = vec![0x00]; // Invalid header
+        invalid_bytes.extend(Frame::new_request(create_dummy_app_data()).to_bytes());
+        let mut cursor = Cursor::new(invalid_bytes.as_slice());
+        let result = Frame::parse(&mut cursor);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_frame_try_from_invalid_length() {
+        let short_bytes = vec![0x68, 0x03, 0x00]; // Too short
+        let result = Frame::try_from(short_bytes.as_slice());
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err().downcast_ref::<FrameError>(),
+            Some(FrameError::Length(_))
+        ));
+    }
+
+    #[test]
+    fn test_frame_try_from_invalid_checksum() {
+        let mut frame = Frame::new_request(create_dummy_app_data());
+        frame.checksum.checksum = 0xFF; // Incorrect checksum
+        let bytes = frame.to_bytes();
+        let result = Frame::try_from(bytes.as_slice());
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err().downcast_ref::<FrameError>(),
+            Some(FrameError::Checksum { .. })
+        ));
+    }
+
+    #[test]
+    fn test_frame_try_from_invalid_tail() {
+        let mut frame = Frame::new_request(create_dummy_app_data());
+        frame.tail.tail = 0x00; // Incorrect tail
+        let bytes = frame.to_bytes();
+        let result = Frame::try_from(bytes.as_slice());
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err().downcast_ref::<FrameError>(),
+            Some(FrameError::Tail(_))
+        ));
+    }
+
+    #[test]
+    fn test_frame_sequence_number() {
+        let frame1 = Frame::new_request(create_dummy_app_data());
+        let frame2 = Frame::new_request(create_dummy_app_data());
+        assert_ne!(frame1.get_seq(), frame2.get_seq());
+    }
+
+    #[test]
+    fn test_frame_is_confirm() {
+        let app_data = AppData::new(Afn::Answer, AnswerFn::Confirm as u8, Some(vec![]));
+        let frame = Frame::new_response(0, app_data);
+        assert!(frame.is_confirm());
+    }
+
+    #[test]
+    fn test_frame_is_deny() {
+        let app_data = AppData::new(Afn::Answer, AnswerFn::Deny as u8, Some(vec![]));
+        let frame = Frame::new_response(0, app_data);
+        assert!(frame.is_deny());
+    }
+
+    #[test]
+    fn test_frame_is_slave_report() {
+        let mut frame = Frame::new_request(create_dummy_app_data());
+        frame.ctrl_field.dir = Dir::Up;
+        frame.ctrl_field.prm = Prm::Master;
+        assert!(frame.is_slave_report());
+    }
+
+    #[test]
+    fn test_frame_is_master_response() {
+        let frame = Frame::new_response(0, create_dummy_app_data());
+        assert!(frame.is_master_response());
+    }
+
+    #[test]
+    fn test_afn_00h_f1() {
+        let hex_str = "681500030000000000000001000000000006000a16";
+        let frame = tests_common::create_frame_from_hex(hex_str);
+
+        let Frame {
+            ctrl_field,
+            user_data,
+            checksum,
+            ..
+        } = frame;
+
+        // ctrl_field
+        assert!(matches!(ctrl_field.dir, Dir::Down));
+        assert!(matches!(ctrl_field.prm, Prm::Slave));
+        assert!(matches!(ctrl_field.comm, Comm::Hplc));
+
+        // user_data
+        assert_eq!(user_data.info_field.get_type(), InfoFieldType::Down);
+        assert_eq!(user_data.info_field.comm_model_mark(), 0);
+        assert_eq!(user_data.info_field.seq_num(), 0);
+        assert!(user_data.address_field.is_none());
+
+        assert_eq!(user_data.app_data.afn(), Afn::Answer);
+        assert_eq!(user_data.app_data.fn_num(), AnswerFn::Confirm as u8);
+        // checksum
+        assert_eq!(checksum.checksum, 0x0a);
+    }
+
+    #[test]
+    fn test_afn_13h_f1() {
+        use crate::protocol::app_data::DataForward;
+
+        let hex_str = "68390043040000000000ab8967563412ab8967564321130100020002ab8967563413ab89675634140e6812345678901268010243c3ac16bb16";
+        let frame = tests_common::create_frame_from_hex(hex_str);
+
+        let Frame {
+            ctrl_field,
+            user_data,
+            checksum,
+            ..
+        } = frame;
+
+        // ctrl_field
+        assert!(matches!(ctrl_field.dir, Dir::Down));
+        assert!(matches!(ctrl_field.prm, Prm::Master));
+        assert!(matches!(ctrl_field.comm, Comm::Hplc));
+
+        // user_data
+        assert_eq!(user_data.info_field.get_type(), InfoFieldType::Down);
+        assert_eq!(user_data.info_field.comm_model_mark(), 1);
+        assert_eq!(user_data.info_field.seq_num(), 0);
+
+        let address_field = user_data.address_field.unwrap();
+        assert_eq!(
+            address_field.src_address,
+            [0x12, 0x34, 0x56, 0x67, 0x89, 0xAB]
+        );
+        assert_eq!(
+            address_field.dst_address,
+            [0x21, 0x43, 0x56, 0x67, 0x89, 0xAB]
+        );
+        assert!(address_field.relay_address.is_none());
+
+        assert_eq!(user_data.app_data.afn(), Afn::RouteDataForward);
+        assert_eq!(user_data.app_data.fn_num(), DataForward::MonitorNode as u8);
+        // checksum
+        assert_eq!(checksum.checksum, 0xbb);
     }
 }

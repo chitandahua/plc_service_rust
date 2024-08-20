@@ -64,7 +64,7 @@ pub enum Afn {
     CocurrentReadMeter = 0xf1,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DataFlag {
     type_: u8,
     mark: u8,
@@ -99,7 +99,7 @@ impl From<&[u8]> for DataFlag {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AppData {
     afn: Afn,
     data_flag: DataFlag,
@@ -231,4 +231,170 @@ pub(crate) enum AppDataError {
     FnNum(u8),
     #[error("invalid data unit length {0}")]
     DataLength(usize),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::convert::TryFrom;
+
+    #[test]
+    fn test_app_data_creation() {
+        let app_data = AppData::new(Afn::Init, 1, Some(vec![1, 2, 3]));
+        assert_eq!(app_data.afn(), Afn::Init);
+        assert_eq!(app_data.fn_num(), 1);
+        assert_eq!(app_data.data_length(), 3);
+    }
+
+    #[test]
+    fn test_app_data_length() {
+        let app_data = AppData::new(Afn::CtrlCmd, 2, Some(vec![1, 2, 3, 4]));
+        assert_eq!(app_data.length(), 7); // AFN_SIZE + DATA_FLAG_SIZE + data_units.len()
+    }
+
+    #[test]
+    fn test_app_data_get_comm_mark() {
+        let app_data1 = AppData::new(Afn::Init, 1, None);
+        assert_eq!(app_data1.get_comm_mark(), 0);
+
+        let app_data2 = AppData::new(Afn::DataForward, 1, None);
+        assert_eq!(app_data2.get_comm_mark(), 1);
+    }
+
+    #[test]
+    fn test_app_data_check() {
+        let app_data = AppData::new(Afn::QueryData, 3, Some(vec![1, 2, 3]));
+        assert!(app_data.check(Afn::QueryData, 3, 3).is_ok());
+        assert!(app_data.check(Afn::Init, 3, 3).is_err());
+        assert!(app_data.check(Afn::QueryData, 4, 3).is_err());
+        assert!(app_data.check(Afn::QueryData, 3, 4).is_err());
+    }
+
+    #[test]
+    fn test_app_data_try_from() {
+        let data = vec![Afn::RouteGet as u8, 1, 0, 5, 6, 7];
+        let app_data = AppData::try_from(data.as_slice()).unwrap();
+        assert_eq!(app_data.afn(), Afn::RouteGet);
+        assert_eq!(app_data.fn_num(), 1);
+        assert_eq!(app_data.data_units, Some(vec![5, 6, 7]));
+    }
+
+    #[test]
+    fn test_app_data_try_from_error() {
+        let data = vec![0xFF]; // Invalid AFN
+        assert!(AppData::try_from(data.as_slice()).is_err());
+
+        let data = vec![Afn::Init as u8]; // Too short
+        assert!(AppData::try_from(data.as_slice()).is_err());
+    }
+
+    #[test]
+    fn test_app_data_into_vec() {
+        let app_data = AppData::new(Afn::CtrlCmd, 2, Some(vec![3, 4, 5]));
+        let vec: Vec<u8> = app_data.into();
+        assert_eq!(vec, vec![Afn::CtrlCmd as u8, 2, 0, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_app_data_display() {
+        let app_data = AppData::new(Afn::Init, 1, Some(vec![1, 2, 3]));
+        let display_string = format!("{}", app_data);
+        assert!(display_string.contains("afn: 1, fn: 1"));
+        assert!(display_string.contains("type: 0, mark: 1"));
+        assert!(display_string.contains("data_units: 010203"));
+    }
+
+    #[test]
+    fn test_app_data_into_iterator() {
+        let app_data = AppData::new(Afn::RouteSet, 3, Some(vec![4, 5, 6]));
+        let collected: Vec<u8> = app_data.into_iter().collect();
+        assert_eq!(collected, vec![Afn::RouteSet as u8, 3, 0, 4, 5, 6]);
+    }
+
+    #[test]
+    fn test_data_flag() {
+        let data_flag = DataFlag::new(2, 3);
+        assert_eq!(data_flag.as_fn_num(), 19);
+
+        let data_flag_from_fn = DataFlag::from(19u8);
+        assert_eq!(data_flag_from_fn.type_, 2);
+        assert_eq!(data_flag_from_fn.mark, 3);
+
+        let data_flag_from_slice = DataFlag::from([3u8, 2u8].as_slice());
+        assert_eq!(data_flag_from_slice.type_, 2);
+        assert_eq!(data_flag_from_slice.mark, 3);
+    }
+
+    #[test]
+    fn test_app_data_with_empty_data_units() {
+        let app_data = AppData::new(Afn::Answer, 0, None);
+        assert_eq!(app_data.data_length(), 0);
+        assert_eq!(app_data.length(), AFN_SIZE + DATA_FLAG_SIZE);
+    }
+
+    #[test]
+    fn test_app_data_with_large_data_units() {
+        let large_data = vec![0; 1000];
+        let app_data = AppData::new(Afn::FileTransfer, 1, Some(large_data.clone()));
+        assert_eq!(app_data.data_length(), 1000);
+        assert_eq!(app_data.length(), AFN_SIZE + DATA_FLAG_SIZE + 1000);
+    }
+
+    #[test]
+    fn test_app_data_try_from_boundary() {
+        let minimal_data = vec![Afn::Debug as u8, 0, 0];
+        let app_data = AppData::try_from(minimal_data.as_slice()).unwrap();
+        assert_eq!(app_data.afn(), Afn::Debug);
+        assert_eq!(app_data.fn_num(), 0);
+        assert_eq!(app_data.data_units, None);
+
+        let barely_invalid_data = vec![Afn::Debug as u8, 0];
+        assert!(AppData::try_from(barely_invalid_data.as_slice()).is_err());
+    }
+
+    #[test]
+    fn test_app_data_error_cases() {
+        let app_data = AppData::new(Afn::Init, 1, Some(vec![1, 2, 3]));
+
+        let err = app_data.check(Afn::CtrlCmd, 1, 3).unwrap_err();
+        assert!(matches!(
+            err.downcast_ref::<AppDataError>(),
+            Some(AppDataError::Afn(_))
+        ));
+
+        let err = app_data.check(Afn::Init, 2, 3).unwrap_err();
+        assert!(matches!(
+            err.downcast_ref::<AppDataError>(),
+            Some(AppDataError::FnNum(_))
+        ));
+
+        let err = app_data.check(Afn::Init, 1, 4).unwrap_err();
+        assert!(matches!(
+            err.downcast_ref::<AppDataError>(),
+            Some(AppDataError::DataLength(_))
+        ));
+    }
+}
+
+#[cfg(test)]
+pub mod tests_common {
+    use super::*;
+    use crate::protocol::app_data::{Afn, AppData};
+    use crate::protocol::Frame;
+    use hex;
+
+    fn hex_to_bytes(hex_str: &str) -> Vec<u8> {
+        hex::decode(hex_str).expect("Invalid hex string")
+    }
+
+    pub fn create_frame_from_hex(hex_str: &str) -> Frame {
+        let bytes = hex_to_bytes(hex_str);
+        Frame::try_from(bytes.as_slice()).expect("Failed to create frame from hex")
+    }
+
+    pub fn test_frame_conversion(hex_str: &str) {
+        let frame = create_frame_from_hex(hex_str);
+        let reconstructed_hex = hex::encode(frame.to_bytes());
+        assert_eq!(hex_str.to_lowercase(), reconstructed_hex);
+    }
 }

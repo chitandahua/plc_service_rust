@@ -39,7 +39,7 @@ pub fn run(args: Args) -> Result<()> {
 
     // mqtt
     let (sender, receiver) = mpsc::channel();
-    let mqtt_msg_handler = Arc::new(MqttMsgHandler::new(sender, vec![]));
+    let mqtt_msg_handler = Arc::new(MqttMsgHandler::new(sender, vec!["test".to_string()]));
     let handler = Handler::new(mqtt_msg_handler.clone());
 
     let mut join_handler = mqtt_client.run(handler, receiver)?;

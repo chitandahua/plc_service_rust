@@ -13,7 +13,7 @@ pub enum InfoFieldType {
     Up,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct InfoFieldDown {
     pub route_flag: u8,
     pub node_flag: u8,
@@ -28,7 +28,7 @@ pub struct InfoFieldDown {
     pub seq_num: u8,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct InfoFieldUp {
     pub route_flag: u8,
     pub comm_model_mark: u8,
@@ -38,6 +38,7 @@ pub struct InfoFieldUp {
     pub meter_feature: u8,
     pub cmd_signal_quality: u8,
     pub res_signal_quality: u8,
+    pub event_mark: u8,
     pub seq_num: u8,
 }
 
@@ -55,14 +56,46 @@ impl InfoField {
         }
     }
 
-    pub fn new(info_field_type: InfoFieldType, seq: u8) -> Self {
-        todo!()
+    pub fn new(info_field_type: InfoFieldType, seq: u8, comm_model_mark: u8) -> Self {
+        match info_field_type {
+            InfoFieldType::Down => InfoField::Down(InfoFieldDown {
+                seq_num: seq,
+                comm_model_mark,
+                ..Default::default()
+            }),
+            InfoFieldType::Up => InfoField::Up(InfoFieldUp {
+                seq_num: seq,
+                comm_model_mark,
+                ..Default::default()
+            }),
+        }
     }
 
     pub fn get_type(&self) -> InfoFieldType {
         match self {
             InfoField::Down(_) => InfoFieldType::Down,
             InfoField::Up(_) => InfoFieldType::Up,
+        }
+    }
+
+    pub fn relay_level(&self) -> u8 {
+        match self {
+            InfoField::Down(down) => down.relay_level,
+            InfoField::Up(up) => up.relay_level,
+        }
+    }
+
+    pub fn comm_model_mark(&self) -> u8 {
+        match self {
+            InfoField::Down(down) => down.comm_model_mark,
+            InfoField::Up(up) => up.comm_model_mark,
+        }
+    }
+
+    pub fn seq_num(&self) -> u8 {
+        match self {
+            InfoField::Down(down) => down.seq_num,
+            InfoField::Up(up) => up.seq_num,
         }
     }
 }
@@ -75,15 +108,15 @@ impl TryFrom<&[u8]> for InfoFieldDown {
 
         Ok(InfoFieldDown {
             route_flag: bytes[0] & 0x01,
-            node_flag: bytes[0] & 0x02,
-            comm_model_mark: bytes[0] & 0x04,
-            conflict_check: bytes[0] & 0x08,
+            node_flag: (bytes[0] & 0x02) >> 1,
+            comm_model_mark: (bytes[0] & 0x04) >> 2,
+            conflict_check: (bytes[0] & 0x08) >> 3,
             relay_level: (bytes[0] & 0xF0) >> 4,
             channel_flag: bytes[1] & 0x0F,
             ecc: (bytes[1] & 0xF0) >> 4,
             answer_bytes: bytes[2],
             speed: u16::from_le_bytes([bytes[3], bytes[4] & 0x7F]),
-            speed_unit_flag: bytes[4] & 0x80,
+            speed_unit_flag: (bytes[4] & 0x80) >> 7,
             seq_num: bytes[5],
         })
     }
@@ -97,13 +130,14 @@ impl TryFrom<&[u8]> for InfoFieldUp {
 
         Ok(InfoFieldUp {
             route_flag: bytes[0] & 0x01,
-            comm_model_mark: bytes[0] & 0x04,
+            comm_model_mark: (bytes[0] & 0x04) >> 2,
             relay_level: (bytes[0] & 0xF0) >> 4,
             channel_flag: bytes[1] & 0x0F,
             line_mark: bytes[2] & 0x0F,
             meter_feature: (bytes[2] & 0xF0) >> 4,
             cmd_signal_quality: bytes[3] & 0x0F,
             res_signal_quality: (bytes[3] & 0xF0) >> 4,
+            event_mark: bytes[4],
             seq_num: bytes[5],
         })
     }
@@ -127,14 +161,13 @@ impl From<InfoField> for [u8; INFO_FIELD_SIZE] {
                 bytes[5] = down.seq_num;
             }
             InfoField::Up(up) => {
-                bytes[0] = 0x80 // Set the high bit to indicate Up type
-                    | (up.route_flag as u8)
+                bytes[0] = (up.route_flag as u8)
                     | ((up.comm_model_mark as u8) << 2)
                     | (up.relay_level << 4);
                 bytes[1] = up.channel_flag;
                 bytes[2] = up.line_mark | (up.meter_feature << 4);
                 bytes[3] = up.cmd_signal_quality | (up.res_signal_quality << 4);
-                // bytes[4] is reserved and remains 0
+                bytes[4] = up.event_mark;
                 bytes[5] = up.seq_num;
             }
         }
@@ -154,43 +187,220 @@ impl IntoIterator for InfoField {
 
 impl fmt::Display for InfoFieldDown {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "InfoFieldDown {{ \n")?;
-        write!(f, "  route_flag: {}\n", self.route_flag)?;
-        write!(f, "  node_flag: {}\n", self.node_flag)?;
-        write!(f, "  comm_model_mark: {}\n", self.comm_model_mark)?;
-        write!(f, "  conflict_check: {}\n", self.conflict_check)?;
-        write!(f, "  relay_level: {}\n", self.relay_level)?;
-        write!(f, "  channel_flag: {}\n", self.channel_flag)?;
-        write!(f, "  ecc: {}\n", self.ecc)?;
-        write!(f, "  answer_bytes: {}\n", self.answer_bytes)?;
-        write!(f, "  speed: {}\n", self.speed)?;
-        write!(f, "  speed_unit_flag: {}\n", self.speed_unit_flag)?;
-        write!(f, "  seq_num: {}\n", self.seq_num)?;
-        write!(f, "}}")
+        writeln!(f, "InfoFieldDown {{ ")?;
+        writeln!(f, "  route_flag: {}", self.route_flag)?;
+        writeln!(f, "  node_flag: {}", self.node_flag)?;
+        writeln!(f, "  comm_model_mark: {}", self.comm_model_mark)?;
+        writeln!(f, "  conflict_check: {}", self.conflict_check)?;
+        writeln!(f, "  relay_level: {}", self.relay_level)?;
+        writeln!(f, "  channel_flag: {}", self.channel_flag)?;
+        writeln!(f, "  ecc: {}", self.ecc)?;
+        writeln!(f, "  answer_bytes: {}", self.answer_bytes)?;
+        writeln!(f, "  speed: {}", self.speed)?;
+        writeln!(f, "  speed_unit_flag: {}", self.speed_unit_flag)?;
+        writeln!(f, "  seq_num: {}", self.seq_num)?;
+        writeln!(f, "}}")
     }
 }
 
 impl fmt::Display for InfoFieldUp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "InfoFieldUp {{ \n")?;
-        write!(f, "  route_flag: {}\n", self.route_flag)?;
-        write!(f, "  comm_model_mark: {}\n", self.comm_model_mark)?;
-        write!(f, "  relay_level: {}\n", self.relay_level)?;
-        write!(f, "  channel_flag: {}\n", self.channel_flag)?;
-        write!(f, "  line_mark: {}\n", self.line_mark)?;
-        write!(f, "  meter_feature: {}\n", self.meter_feature)?;
-        write!(f, "  cmd_signal_quality: {}\n", self.cmd_signal_quality)?;
-        write!(f, "  res_signal_quality: {}\n", self.res_signal_quality)?;
-        write!(f, "  seq_num: {}\n", self.seq_num)?;
-        write!(f, "}}")
+        writeln!(f, "InfoFieldUp {{ ")?;
+        writeln!(f, "  route_flag: {}", self.route_flag)?;
+        writeln!(f, "  comm_model_mark: {}", self.comm_model_mark)?;
+        writeln!(f, "  relay_level: {}", self.relay_level)?;
+        writeln!(f, "  channel_flag: {}", self.channel_flag)?;
+        writeln!(f, "  line_mark: {}", self.line_mark)?;
+        writeln!(f, "  meter_feature: {}", self.meter_feature)?;
+        writeln!(f, "  cmd_signal_quality: {}", self.cmd_signal_quality)?;
+        writeln!(f, "  res_signal_quality: {}", self.res_signal_quality)?;
+        writeln!(f, "  event_mark: {}", self.event_mark)?;
+        writeln!(f, "  seq_num: {}", self.seq_num)?;
+        writeln!(f, "}}")
     }
 }
 
 impl fmt::Display for InfoField {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            InfoField::Down(down) => write!(f, "{}", down),
-            InfoField::Up(up) => write!(f, "{}", up),
+            InfoField::Down(down) => writeln!(f, "{}", down),
+            InfoField::Up(up) => writeln!(f, "{}", up),
         }
+    }
+}
+
+#[cfg(test)]
+mod info_field_tests {
+    use super::*;
+
+    #[test]
+    fn test_info_field_down_from_bytes() {
+        let bytes = [0x1F, 0x2A, 0x03, 0x04, 0x85, 0x06];
+        let info_field = InfoField::from_bytes(InfoFieldType::Down, &bytes).unwrap();
+        if let InfoField::Down(down) = info_field {
+            assert_eq!(down.route_flag, 1);
+            assert_eq!(down.node_flag, 1);
+            assert_eq!(down.comm_model_mark, 1);
+            assert_eq!(down.conflict_check, 1);
+            assert_eq!(down.relay_level, 1);
+            assert_eq!(down.channel_flag, 10);
+            assert_eq!(down.ecc, 2);
+            assert_eq!(down.answer_bytes, 3);
+            assert_eq!(down.speed, 1284);
+            assert_eq!(down.speed_unit_flag, 1);
+            assert_eq!(down.seq_num, 6);
+        } else {
+            panic!("Expected InfoField::Down");
+        }
+    }
+
+    #[test]
+    fn test_info_field_up_from_bytes() {
+        let bytes = [0x85, 0x0A, 0x23, 0x45, 0x67, 0x06];
+        let info_field = InfoField::from_bytes(InfoFieldType::Up, &bytes).unwrap();
+        if let InfoField::Up(up) = info_field {
+            assert_eq!(up.route_flag, 1);
+            assert_eq!(up.comm_model_mark, 1);
+            assert_eq!(up.relay_level, 8);
+            assert_eq!(up.channel_flag, 10);
+            assert_eq!(up.line_mark, 3);
+            assert_eq!(up.meter_feature, 2);
+            assert_eq!(up.cmd_signal_quality, 5);
+            assert_eq!(up.res_signal_quality, 4);
+            assert_eq!(up.event_mark, 0x67);
+            assert_eq!(up.seq_num, 6);
+        } else {
+            panic!("Expected InfoField::Up");
+        }
+    }
+
+    #[test]
+    fn test_info_field_down_to_bytes() {
+        let down = InfoFieldDown {
+            route_flag: 1,
+            node_flag: 1,
+            comm_model_mark: 1,
+            conflict_check: 1,
+            relay_level: 1,
+            channel_flag: 10,
+            ecc: 2,
+            answer_bytes: 3,
+            speed: 1284,
+            speed_unit_flag: 1,
+            seq_num: 6,
+        };
+        let info_field = InfoField::Down(down);
+        let bytes: [u8; INFO_FIELD_SIZE] = info_field.into();
+        assert_eq!(bytes, [0x1F, 0x2A, 0x03, 0x04, 0x85, 0x06]);
+    }
+
+    #[test]
+    fn test_info_field_up_to_bytes() {
+        let up = InfoFieldUp {
+            route_flag: 1,
+            comm_model_mark: 1,
+            relay_level: 8,
+            channel_flag: 10,
+            line_mark: 3,
+            meter_feature: 2,
+            cmd_signal_quality: 5,
+            res_signal_quality: 4,
+            event_mark: 0x67,
+            seq_num: 6,
+        };
+        let info_field = InfoField::Up(up);
+        let bytes: [u8; INFO_FIELD_SIZE] = info_field.into();
+        assert_eq!(bytes, [0x85, 0x0A, 0x23, 0x45, 0x67, 0x06]);
+    }
+
+    #[test]
+    fn test_new_info_field() {
+        let down = InfoField::new(InfoFieldType::Down, 5, 1);
+        if let InfoField::Down(down) = down {
+            assert_eq!(down.seq_num, 5);
+            assert_eq!(down.comm_model_mark, 1);
+        } else {
+            panic!("Expected InfoField::Down");
+        }
+
+        let up = InfoField::new(InfoFieldType::Up, 6, 0);
+        if let InfoField::Up(up) = up {
+            assert_eq!(up.seq_num, 6);
+            assert_eq!(up.comm_model_mark, 0);
+        } else {
+            panic!("Expected InfoField::Up");
+        }
+    }
+
+    #[test]
+    fn test_get_type() {
+        let down = InfoField::new(InfoFieldType::Down, 5, 1);
+        assert_eq!(down.get_type(), InfoFieldType::Down);
+
+        let up = InfoField::new(InfoFieldType::Up, 6, 0);
+        assert_eq!(up.get_type(), InfoFieldType::Up);
+    }
+
+    #[test]
+    fn test_info_field_into_iter() {
+        let down = InfoFieldDown {
+            route_flag: 1,
+            node_flag: 1,
+            comm_model_mark: 1,
+            conflict_check: 1,
+            relay_level: 1,
+            channel_flag: 10,
+            ecc: 2,
+            answer_bytes: 3,
+            speed: 1284,
+            speed_unit_flag: 1,
+            seq_num: 6,
+        };
+        let info_field = InfoField::Down(down);
+        let bytes: Vec<u8> = info_field.into_iter().collect();
+        assert_eq!(bytes, vec![0x1F, 0x2A, 0x03, 0x04, 0x85, 0x06]);
+    }
+
+    #[test]
+    fn test_display_info_field_down() {
+        let down = InfoFieldDown {
+            route_flag: 1,
+            node_flag: 1,
+            comm_model_mark: 1,
+            conflict_check: 1,
+            relay_level: 1,
+            channel_flag: 10,
+            ecc: 2,
+            answer_bytes: 3,
+            speed: 1284,
+            speed_unit_flag: 1,
+            seq_num: 6,
+        };
+        let info_field = InfoField::Down(down);
+        let display_string = format!("{}", info_field);
+        assert!(display_string.contains("route_flag: 1"));
+        assert!(display_string.contains("seq_num: 6"));
+        assert!(display_string.contains("speed: 1284"));
+    }
+
+    #[test]
+    fn test_display_info_field_up() {
+        let up = InfoFieldUp {
+            route_flag: 1,
+            comm_model_mark: 1,
+            relay_level: 8,
+            channel_flag: 10,
+            line_mark: 3,
+            meter_feature: 2,
+            cmd_signal_quality: 5,
+            res_signal_quality: 4,
+            event_mark: 0x67,
+            seq_num: 6,
+        };
+        let info_field = InfoField::Up(up);
+        let display_string = format!("{}", info_field);
+        assert!(display_string.contains("route_flag: 1"));
+        assert!(display_string.contains("seq_num: 6"));
+        assert!(display_string.contains("event_mark: 103"));
     }
 }

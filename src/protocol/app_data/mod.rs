@@ -1,9 +1,10 @@
+use crate::Result;
+use anyhow::{bail, ensure};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::fmt::Formatter;
 use std::fmt::{self, Display};
 use strum_macros::{EnumString, ToString};
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 use thiserror::Error;
-use anyhow::{bail, ensure};
 
 mod answer;
 pub use answer::{AnswerFn, ConfirmResponse, DenyErrorCode, DenyResponse};
@@ -43,7 +44,7 @@ pub type Address = [u8; 6];
 const AFN_SIZE: usize = 1;
 const DATA_FLAG_SIZE: usize = 2;
 
-#[derive(Debug, PartialEq, Clone, IntoPrimitive, TryFromPrimitive)]
+#[derive(Debug, PartialEq, Clone, IntoPrimitive, TryFromPrimitive, strum_macros::Display)]
 #[repr(u8)]
 pub enum Afn {
     Answer = 0x00,
@@ -63,7 +64,7 @@ pub enum Afn {
     CocurrentReadMeter = 0xf1,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DataFlag {
     type_: u8,
     mark: u8,
@@ -98,7 +99,7 @@ impl From<&[u8]> for DataFlag {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AppData {
     afn: Afn,
     data_flag: DataFlag,
@@ -130,8 +131,7 @@ impl AppData {
             | Afn::CtrlCmd
             | Afn::RouteGet
             | Afn::RouteSet => 0,
-            Afn::DataForward
-            | Afn::RouteDataForward => 1,
+            Afn::DataForward | Afn::RouteDataForward => 1,
             _ => 0,
         }
     }
@@ -144,21 +144,18 @@ impl AppData {
         self.data_flag.as_fn_num()
     }
 
-    pub fn data_length(&self) -> u32 {
+    pub fn data_length(&self) -> usize {
         self.data_units
             .as_ref()
-            .map_or(0, |data_units| data_units.len() as u32)
+            .map_or(0, |data_units| data_units.len())
     }
 
-    pub fn check(&self, afn: Afn, fn_num: u8, length: usize) -> Result<(), AppDataError> {
-        ensure!(app_data.afn() == afn, AppDataError::Afn(app_data.afn()));
+    pub fn check(&self, afn: Afn, fn_num: u8, length: usize) -> Result<()> {
+        ensure!(self.afn() == afn, AppDataError::Afn(self.afn()));
+        ensure!(self.fn_num() == fn_num, AppDataError::FnNum(self.fn_num()));
         ensure!(
-            app_data.fn_num() == fn_num,
-            AppDataError::FnNum(app_data.fn_num())
-        );
-        ensure!(
-            app_data.data_length() == length,
-            AppDataError::DataLength(app_data.data_length())
+            self.data_length() == length,
+            AppDataError::DataLength(self.data_length())
         );
 
         Ok(())
@@ -167,9 +164,9 @@ impl AppData {
 
 impl TryFrom<&[u8]> for AppData {
     type Error = crate::Error;
-    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+    fn try_from(data: &[u8]) -> Result<Self> {
         let length = AFN_SIZE + DATA_FLAG_SIZE;
-        bail!(data.length() < length, "app data length error");
+        ensure!(data.len() >= length, "app data length error");
 
         Ok(Self::new(
             data[0].try_into()?,
@@ -185,7 +182,11 @@ impl TryFrom<&[u8]> for AppData {
 
 impl From<AppData> for Vec<u8> {
     fn from(app_data: AppData) -> Self {
-        let mut data = vec![app_data.afn as u8, app_data.data_flag.mark, app_data.data_flag.type_];
+        let mut data = vec![
+            app_data.afn as u8,
+            app_data.data_flag.mark,
+            app_data.data_flag.type_,
+        ];
         if let Some(data_units) = app_data.data_units {
             data.extend(data_units);
         }
@@ -206,16 +207,28 @@ impl Display for AppData {
             "type: {}, mark: {}",
             self.data_flag.type_, self.data_flag.mark
         )?;
-        writeln!(f, "data_units: {}", hex::encode(self.data_units.as_ref().unwrap_or(&vec![])))
+        writeln!(
+            f,
+            "data_units: {}",
+            hex::encode(self.data_units.as_ref().unwrap_or(&vec![]))
+        )
     }
 }
 
-#[derive(Error, Debug, PartialEq)]
+impl IntoIterator for AppData {
+    type Item = u8;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+    fn into_iter(self) -> Self::IntoIter {
+        Into::<Vec<u8>>::into(self).into_iter()
+    }
+}
+
+#[derive(Error, Debug)]
 pub(crate) enum AppDataError {
     #[error("invalid afn {0}")]
     Afn(Afn),
     #[error("invalid fn {0}")]
     FnNum(u8),
     #[error("invalid data unit length {0}")]
-    DataLength(u32),
+    DataLength(usize),
 }

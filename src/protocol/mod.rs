@@ -1,5 +1,5 @@
 mod app_data;
-pub use app_data::{AppData, Address};
+pub use app_data::{Address, AppData};
 
 mod frame;
 pub use frame::Frame;

@@ -1,11 +1,12 @@
-use num_enum::{FromPrimitive, IntoPrimitive};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use strum_macros::{EnumString, ToString};
 
 use std::fmt::Formatter;
 use std::fmt::{self, Display};
 
-use crate::protocol::AppData;
 use crate::protocol::app_data::Afn;
+use crate::protocol::AppData;
+use crate::Result;
 
 #[derive(Debug)]
 pub enum AnswerFn {
@@ -20,14 +21,12 @@ pub struct ConfirmResponse {
 
 impl TryFrom<AppData> for ConfirmResponse {
     type Error = crate::Error;
-    fn try_from(app_data: AppData) -> Result<Self, Self::Error> {
+    fn try_from(app_data: AppData) -> Result<Self> {
         app_data.check(Afn::Answer, AnswerFn::Confirm as u8, 6)?;
 
         let data_units = app_data.data_units.unwrap();
         Ok(ConfirmResponse {
-            channel_status: u32::from_le_bytes(
-                data_units[0..4].try_into().unwrap(),
-            ),
+            channel_status: u32::from_le_bytes(data_units[0..4].try_into().unwrap()),
             wait_time: u16::from_le_bytes(data_units[4..6].try_into().unwrap()),
         })
     }
@@ -35,31 +34,25 @@ impl TryFrom<AppData> for ConfirmResponse {
 
 impl From<ConfirmResponse> for AppData {
     fn from(response: ConfirmResponse) -> Self {
-        let data_units = [
-            response.channel_status.to_le_bytes(),
-            response.wait_time.to_le_bytes(),
-        ]
-        .concat();
-        AppData::new(
-            Afn::Answer,
-            AnswerFn::Confirm as u8,
-            Some(data_units),
-        )
+        let mut data_units = vec![];
+        data_units.extend(response.channel_status.to_le_bytes());
+        data_units.extend(response.wait_time.to_le_bytes());
+        AppData::new(Afn::Answer, AnswerFn::Confirm as u8, Some(data_units))
     }
 }
 
 impl Display for ConfirmResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f,
+        writeln!(
+            f,
             "channel_status: 0x{:08x}, wait_time: {}",
-            self.channel_status,
-            self.wait_time
+            self.channel_status, self.wait_time
         )
     }
 }
 
 // Deny
-#[derive(Debug, EnumString, ToString, FromPrimitive, IntoPrimitive, Clone)]
+#[derive(Debug, EnumString, TryFromPrimitive, IntoPrimitive, Clone, strum_macros::Display)]
 #[repr(u8)]
 pub enum DenyErrorCode {
     #[strum(serialize = "Time Out")]
@@ -104,10 +97,10 @@ pub struct DenyResponse {
 
 impl TryFrom<AppData> for DenyResponse {
     type Error = crate::Error;
-    fn try_from(app_data: AppData) -> Result<Self, Self::Error> {
+    fn try_from(app_data: AppData) -> Result<Self> {
         app_data.check(Afn::Answer, AnswerFn::Deny as u8, 1)?;
         Ok(DenyResponse {
-            error_code: app_data.data_units.unwrap()[0].try_into()?,
+            error_code: DenyErrorCode::try_from(app_data.data_units.unwrap()[0])?,
         })
     }
 }

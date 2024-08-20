@@ -2,12 +2,12 @@ use anyhow::Context;
 use paho_mqtt::{Client, ConnectOptionsBuilder, CreateOptionsBuilder, Message};
 use serde::Deserialize;
 use std::fs::File;
+use std::io::Read;
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread::{self, sleep, JoinHandle};
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
-use std::path::PathBuf;
-use std::io::Read;
 
 use paho_mqtt as mqtt;
 
@@ -28,34 +28,32 @@ struct MqttConfig {
 }
 
 pub trait MqttHandler {
-    fn mqtt_msg_handler(
-        &mut self,
-        message: MqttMessage,
-    ) -> Result<Option<MqttMessage>>;
-    fn subscribe_topics(&self) -> &[String];
+    fn mqtt_msg_handler(&mut self, message: MqttMessage) -> Result<Option<MqttMessage>>;
+    fn subscribe_topics(&self) -> Vec<String>;
 }
 
 pub struct MqttClient {
     client: Client,
     qos: i32,
-    sender: mpsc::Sender<MqttMessage>,
-    receiver: mpsc::Receiver<MqttMessage>,
     rx: mqtt::Receiver<Option<Message>>,
 }
 
 impl MqttClient {
     pub fn from_file(config_path: PathBuf) -> Result<Self> {
-        let mut file = File::open(config_path)
-            .context("open mqtt config fail")?;
+        let mut file = File::open(config_path).context("open mqtt config fail")?;
         let mut buffer = String::new();
-        file.read_to_string(&mut buffer).context("invalid mqtt config")?;
+        file.read_to_string(&mut buffer)
+            .context("invalid mqtt config")?;
 
         let config: MqttConfig =
             serde_json::from_str(buffer.as_str()).context("invalid mqtt json config")?;
 
         debug!("mqtt server {}:{}", config.service_ip, config.service_port);
         let create_opts = CreateOptionsBuilder::new()
-            .server_uri(format!("tcp://{}:{}", config.service_ip, config.service_port))
+            .server_uri(format!(
+                "tcp://{}:{}",
+                config.service_ip, config.service_port
+            ))
             .client_id(config.client_id.unwrap_or(APP_NAME.to_string()))
             .finalize();
 
@@ -82,31 +80,27 @@ impl MqttClient {
         })?;
 
         debug!("mqtt connected");
-        let (sender, receiver) = mpsc::channel();
         Ok(Self {
             client,
             qos: mqtt::QOS_1,
-            sender,
-            receiver,
             rx,
         })
     }
 
-    pub fn run(self, handler: impl MqttHandler + Send + 'static) -> Result<Vec<JoinHandle<()>>> {
+    pub fn run(
+        self,
+        handler: impl MqttHandler + Send + 'static,
+        receiver: mpsc::Receiver<MqttMessage>,
+    ) -> Result<Vec<JoinHandle<()>>> {
         debug!("mqtt client start");
-        let MqttClient {
-            client,
-            qos,
-            sender: _, 
-            receiver,
-            rx,
-        } = self;
+        let MqttClient { client, qos, rx } = self;
 
-        client.subscribe_many_same_qos(handler.subscribe_topics(), qos)
+        client
+            .subscribe_many_same_qos(&handler.subscribe_topics(), qos)
             .context("subscribe topic fail")?;
 
         let client_clone = client.clone();
-        let msg_send_thread =  thread::spawn(move || {
+        let msg_send_thread = thread::spawn(move || {
             Self::publish(&client_clone, receiver, qos); // 接收publish message
         });
         let msg_recv_thread = thread::spawn(move || {
@@ -116,13 +110,9 @@ impl MqttClient {
         Ok(vec![msg_send_thread, msg_recv_thread])
     }
 
-    pub fn sender(&self) -> &mpsc::Sender<MqttMessage> {
-        &self.sender
-    }
-
     fn receive(
-        client: &Client, 
-        rx: mqtt::Receiver<Option<Message>>, 
+        client: &Client,
+        rx: mqtt::Receiver<Option<Message>>,
         qos: i32,
         mut handler: impl MqttHandler,
     ) {
@@ -138,11 +128,8 @@ impl MqttClient {
                             if let Some(response) = response {
                                 debug!("response: topic {}", response.topic());
                                 debug!("payload {}", response.payload());
-                                let response = mqtt::Message::new(
-                                    response.topic(),
-                                    response.payload(),
-                                    qos,
-                                );
+                                let response =
+                                    mqtt::Message::new(response.topic(), response.payload(), qos);
                                 Self::publish_msg(client, response);
                             }
                         }
@@ -178,7 +165,8 @@ impl MqttClient {
     }
 
     fn publish_msg(client: &Client, message: Message) {
-        client.publish(message)
+        client
+            .publish(message)
             .unwrap_or_else(|e| error!(cause = ?e, "publish error"));
     }
 

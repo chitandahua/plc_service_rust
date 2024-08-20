@@ -5,20 +5,19 @@ use std::time::Duration;
 use tracing::{debug, error, warn};
 
 use crate::{SerialPort, Result};
-use crate::{Frame, MessageHeader, UartMessage};
+use crate::{Frame, ReqInfo, UartMessage};
 
 //use crate::serial_port::ConnectionError;
 
 #[derive(Debug)]
 pub struct UartAgent {
     uart_requeset_receiver: mpsc::Receiver<UartMessage>,
+    req_info: Arc<Mutex<Option<ReqInfo>>>,
+    cond: Arc<Condvar>,
 }
 
-#[derive(Debug)]
-struct UartMessage {
-
-    header: Option<MessageHeader>,
-}
+// TODO
+// UartHandler
 
 impl UartAgent {
     pub fn new(
@@ -26,12 +25,16 @@ impl UartAgent {
     ) -> Self {
         UartAgent {
             uart_requeset_receiver,
+            req_info: Arc::new(Mutex::new(None)),
+            cond: Arc::new(Condvar::new()),
         }
     }
 
-    pub fn run(self, uart_config: PathBuf, tcp_addr: Option<SockAddr>) -> Result<Vec<JoinHandle<()>>> {
+    pub fn run(self, uart_config: PathBuf, tcp_addr: Option<SockAddr>, handler: impl UartHandler + Send + 'static) -> Result<Vec<JoinHandle<()>>> {
         let UartAgent {
             uart_requeset_receiver,
+            req_info,
+            cond
         } = self;
 
         let SerialPort {
@@ -39,89 +42,83 @@ impl UartAgent {
             mut writer,
         } = SerialPort::new(uart_config, tcp_addr)?;
 
-        let mutex = Arc::new(Mutex::new(UartMessage {
-            current_cmd: AtCmd::AtNone,
-            status: AtStatus::ResetInit,
-            header: None,
-        }));
-        let cond = Arc::new(Condvar::new());
-        let mutex_clone = mutex.clone();
+        let req_info_clone = req_info.clone();
         let cond_clone = cond.clone();
 
         let uart_agent_thread = thread::spawn(move || {
-            const MAX_RETRY: usize = 5;
-            while let Ok((header, cmd)) = uart_requeset_receiver.recv() {
-                debug!("recv at cmd {}", cmd);
+            const MAX_RETRY: usize = 1; // 不重试
+            while let Ok(req_msg) = uart_requeset_receiver.recv() {
+                let UartMessage {
+                    req_info,
+                    frame,
+                } = req_msg;
+                debug!("recv frame {}", frame);
 
                 let mut cnt = 0;
-                let mut msg = mutex.lock().unwrap();
-                let at_cmd = cmd.to_at_cmd();
-                msg.current_cmd = cmd;
-                msg.header = header;
-
-                while cnt < MAX_RETRY {
-                    match writer.write_request(&at_cmd[..]) {
-                        Ok(_) => {}
-                        Err(err) => {
-                            warn!("write error {}", err);
-                        }
-                    };
-
-                    let result = cond.wait_timeout(msg, Duration::from_millis(200)).unwrap();
-                    msg = result.0;
-                    if msg.current_cmd == AtCmd::AtNone {
-                        break;
-                    }
-                    cnt += 1;
-                }
-                msg.current_cmd = AtCmd::AtNone;
-                if cnt >= MAX_RETRY
-                    && (msg.status == AtStatus::ResetInit || msg.status == AtStatus::Init)
                 {
-                    //panic!("AT command init error!!!");
-                    error!("AT command init error!!!");
-                    std::process::exit(1);
-                }
+                    let mut msg = req_info.lock().unwrap();
+                    msg = Some(req_info);
 
-                // drop(msg);
-                // 构造错误回复 TODO
-                // 不同At指令类型 需要构造不同的回复
+                    while cnt < MAX_RETRY {
+                        match writer.write_request(frame) {
+                            Ok(_) => {}
+                            Err(err) => {
+                                warn!("write error {}", err);
+                            }
+                        };
+
+                        let result = cond.wait_timeout(msg, Duration::from_millis(200), |&mut req_info| req_info.is_some()).unwrap();
+                        msg = result.0;
+                        if !result.1.timed_out() {
+                            break;
+                        }
+                        cnt += 1;
+                    }
+                    
+                    // 超时处理 TODO
+                    if msg.is_some() {
+                        warning!("timeout");
+                    }
+                }
+                
             }
 
             debug!("uart_agent_thread finish");
         });
 
-        let uart_response_thread = thread::spawn(move || loop {
+        let uart_handler_thread = thread::spawn(move || loop {
             match reader.read_response() {
                 Ok(Some(response)) => {
                     debug!("uart response {}", response);
 
-                    // 根据response获取cmd
-                    let mut msg = mutex_clone.lock().unwrap();
-                    match msg.current_cmd == response {
-                        true => {
-                            msg.current_cmd = AtCmd::AtNone;
-                            msg.status = match msg.status {
-                                AtStatus::ResetInit => AtStatus::Init,
-                                AtStatus::Init => AtStatus::Idle,
-                                _ => AtStatus::Idle,
-                            };
+                    let req_info;
+                    let invalid = {
+                        // 根据response获取cmd
+                        let mut msg = req_info_clone.lock().unwrap();
+                        req_info = msg.take();
+                        let result = if response.is_report() {
+                            true
+                        } else if req_info.is_some() && response.match_req(req_info) {
+                            // 调用对应处理函数 TODO 锁外调用
+                            true
+                        } else {
+                            // no request or not match TODO
+                            warn!("invalid response");
+                            false
                         }
-                        false => {
-                            warn!("invalid AT command response");
-                            cond_clone.notify_one();
-                            drop(msg);
-                            continue;
-                        }
+                        
+                        cond_clone.notify_one();
+                        result
                     };
-                    let header = msg.header.take();
-                    cond_clone.notify_one();
-                    drop(msg);
 
-                    match uart_response_sender.send((header, response)) {
+                    if !invalid {
+                        continue;
+                    }
+
+                    match handler.uart_msg_handler(UartMessage::new(req_info, response)) {
                         Ok(_) => {}
                         Err(e) => {
-                            error!(casue = ?e, "uart_response_sender send error");
+                            error!(casue = ?e, "handle uart response error");
                             continue;
                         }
                     }
@@ -134,6 +131,6 @@ impl UartAgent {
             }
         });
 
-        Ok(vec![uart_agent_thread, uart_response_thread])
+        Ok(vec![uart_agent_thread, uart_handler_thread])
     }
 }

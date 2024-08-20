@@ -1,9 +1,10 @@
+use anyhow::ensure;
 use std::fmt::Formatter;
 use std::fmt::{self, Display};
-use anyhow::ensure;
 
+use crate::protocol::app_data::{Address, Afn, AppDataError};
 use crate::protocol::AppData;
-use crate::protocol::app_data::{Afn, Address};
+use crate::Result;
 
 pub enum DataForward {
     MonitorNode = 1,
@@ -19,19 +20,23 @@ pub struct MonitorNodeRequest {
 
 impl From<MonitorNodeRequest> for AppData {
     fn from(req: MonitorNodeRequest) -> Self {
-        let mut data =
-            Vec::with_capacity(4 + req.node_addrs.len() * Address::LEN + req.message.len());
+        let mut data = Vec::with_capacity(
+            4 + req.node_addrs.len() * Address::default().len() + req.message.len(),
+        );
         data.push(req.protocol_type);
         data.push(req.comm_delay_flag);
         data.push(req.node_addrs.len() as u8);
         // 高低位互换
-        for addr in req.node_addrs {
-            addr.reverse();
-            data.extend(addr);
+        for mut addr in req.node_addrs {
+            data.extend(addr.into_iter().rev());
         }
         data.push(req.message.len() as u8);
         data.extend(req.message);
-        AppData::new(Afn::RouteDataForward, DataForward::MonitorNode as u8, Some(data))
+        AppData::new(
+            Afn::RouteDataForward,
+            DataForward::MonitorNode as u8,
+            Some(data),
+        )
     }
 }
 
@@ -45,13 +50,13 @@ pub struct MonitorNodeResponse {
 impl TryFrom<AppData> for MonitorNodeResponse {
     type Error = crate::Error;
 
-    fn try_from(app_data: AppData) -> Result<Self, Self::Error> {
+    fn try_from(app_data: AppData) -> Result<Self> {
         const PREFIX_LEN: usize = 4;
         ensure!(
             app_data.data_length() >= PREFIX_LEN,
             AppDataError::DataLength(app_data.data_length())
         );
-        let message_len = app_data.data_units.unwrap()[3] as usize;
+        let message_len = app_data.data_units.as_ref().unwrap()[3] as usize;
         app_data.check(
             Afn::RouteDataForward,
             DataForward::MonitorNode as u8,
@@ -62,7 +67,7 @@ impl TryFrom<AppData> for MonitorNodeResponse {
         Ok(MonitorNodeResponse {
             up_time: u16::from_le_bytes(data_units[0..2].try_into().unwrap()),
             protocol_type: data_units[2],
-            message_len,
+            message_len: message_len as u8,
             message: data_units[PREFIX_LEN..].to_vec(),
         })
     }

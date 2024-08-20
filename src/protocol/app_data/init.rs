@@ -1,8 +1,8 @@
 use std::fmt::Formatter;
 use std::fmt::{self, Display};
 
-use crate::protocol::AppData;
 use crate::protocol::app_data::Afn;
+use crate::protocol::AppData;
 
 #[derive(Debug)]
 #[repr(u8)]

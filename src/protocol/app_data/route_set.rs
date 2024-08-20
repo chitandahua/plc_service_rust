@@ -1,8 +1,8 @@
 use std::fmt::Formatter;
 use std::fmt::{self, Display};
 
+use crate::protocol::app_data::{Address, Afn};
 use crate::protocol::AppData;
-use crate::protocol::app_data::{Afn, Address};
 
 pub enum RouteSet {
     AddNode = 1,

@@ -20,7 +20,10 @@ paho-mqtt = { version = "0.12", default-features=false, features=["bundled"] }
 lazy_static = "1"
 compile-time = "0.2.0"
 time = "0"
-
+hex = "0"
+num_enum = "0"
+strum = "0.26"
+strum_macros = "0.26"
 
 [build-dependencies]
 vergen = { version = "7.4.2", default-features = false, features = [

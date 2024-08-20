@@ -1,15 +1,16 @@
-use thiserror::Error;
-use std::fmt::Formatter;
-use std::fmt;
 use anyhow::ensure;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+use std::fmt;
+use std::fmt::Formatter;
 use std::sync::atomic::{AtomicU8, Ordering};
 use strum_macros::{EnumString, ToString};
-use num_enum::{IntoPrimitive, TryFromPrimitive};
+use thiserror::Error;
 
-use crate::protocol::{AppData, UserData};
 use crate::protocol::app_data::{Afn, AnswerFn};
+use crate::protocol::{AppData, UserData};
+use crate::Result;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Header {
     header: u8,
     length: u16,
@@ -55,7 +56,9 @@ impl IntoIterator for Header {
 }
 
 // ctrl field
-#[derive(Debug, Clone, PartialEq, EnumString, ToString, IntoPrimitive, TryFromPrimitive, strum_macros::Display)]
+#[derive(
+    Debug, Clone, PartialEq, EnumString, IntoPrimitive, TryFromPrimitive, strum_macros::Display,
+)]
 #[strum(serialize_all = "lowercase")]
 #[repr(u8)]
 enum Dir {
@@ -63,7 +66,9 @@ enum Dir {
     Up = 1,
 }
 
-#[derive(Debug, Clone, PartialEq, EnumString, ToString, IntoPrimitive, TryFromPrimitive, strum_macros::Display)]
+#[derive(
+    Debug, Clone, PartialEq, EnumString, IntoPrimitive, TryFromPrimitive, strum_macros::Display,
+)]
 #[strum(serialize_all = "lowercase")]
 #[repr(u8)]
 enum Prm {
@@ -71,7 +76,7 @@ enum Prm {
     Master = 1,
 }
 
-#[derive(Debug, Clone, EnumString, ToString, IntoPrimitive, TryFromPrimitive, strum_macros::Display)]
+#[derive(Debug, Clone, EnumString, IntoPrimitive, TryFromPrimitive, strum_macros::Display)]
 #[repr(u8)]
 enum Comm {
     #[strum(serialize = "Centralize")]
@@ -98,7 +103,7 @@ impl Default for CtrlField {
         CtrlField {
             dir: Dir::Down,
             prm: Prm::Master,
-            comm: Comm::Hplc,           
+            comm: Comm::Hplc,
         }
     }
 }
@@ -115,13 +120,16 @@ impl CtrlField {
 
 impl From<CtrlField> for u8 {
     fn from(ctrl_field: CtrlField) -> Self {
-        (ctrl_field.dir.into() << 7) | (ctrl_field.prm.into() << 6) | ctrl_field.comm.into()
+        // 7: dir, 6: prm, 5-0: comm
+        (Into::<u8>::into(ctrl_field.dir) << 7)
+            | (Into::<u8>::into(ctrl_field.prm) << 6)
+            | Into::<u8>::into(ctrl_field.comm)
     }
 }
 
 impl TryFrom<u8> for CtrlField {
     type Error = crate::Error;
-    fn try_from(ctrl_field: u8) -> Result<Self, Self::Error> {
+    fn try_from(ctrl_field: u8) -> Result<Self> {
         Ok(CtrlField {
             dir: (ctrl_field >> 7).try_into()?,
             prm: ((ctrl_field >> 6) & 1).try_into()?,
@@ -147,7 +155,7 @@ impl IntoIterator for CtrlField {
 }
 
 // checksum
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct Checksum {
     checksum: u8,
 }
@@ -161,7 +169,7 @@ impl Checksum {
 // tail
 const TAIL: u8 = 0x16;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Tail {
     tail: u8,
 }
@@ -184,7 +192,7 @@ const HEADER_OFFSET: usize = 0;
 const CTRL_FIELD_OFFSET: usize = HEADER_OFFSET + HEADER_SIZE;
 const USER_DATA_OFFSET: usize = CTRL_FIELD_OFFSET + CTRL_FIELD_SIZE;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Frame {
     header: Header,
     ctrl_field: CtrlField,
@@ -204,22 +212,20 @@ fn calc_checksum(bytes: &[u8]) -> u8 {
 static SEQ: AtomicU8 = AtomicU8::new(0);
 
 impl Frame {
-    fn checksum(&self) -> u8 {
-        let mut bytes = Vec::new();
-        bytes.push(self.ctrl_field.clone().into());
-        bytes.extend(self.user_data.clone()); // TODO 
-        calc_checksum(&bytes)
-    }
-
     fn new(is_response: bool, seq: u8, app_data: AppData) -> Self {
         let user_data = UserData::new(seq, app_data);
         let mut frame = Frame {
             header: Header::new((FRAME_SIZE + user_data.length()) as u16),
             ctrl_field: CtrlField::new(is_response),
             user_data,
-            ..Default::default()
+            //..Default::default() // TODO 需要为Frame以及剩余字段impl Default
+            checksum: Default::default(),
+            tail: Default::default(),
         };
-        frame.checksum = Checksum::new(frame.checksum());
+        let bytes: Vec<u8> = frame.clone().into();
+        frame.checksum = Checksum::new(calc_checksum(
+            &bytes[CTRL_FIELD_OFFSET..bytes.len() - LAST_SIZE],
+        ));
         frame
     }
 
@@ -254,7 +260,7 @@ impl Frame {
     }
 }
 
-#[derive(Error, Debug, PartialEq, EnumString, ToString, Display)]
+#[derive(Error, Debug, PartialEq, EnumString)]
 pub(crate) enum FrameError {
     #[error("length {0} error")]
     Length(usize),
@@ -268,11 +274,8 @@ pub(crate) enum FrameError {
 
 impl TryFrom<&[u8]> for Frame {
     type Error = anyhow::Error;
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        ensure!(
-            bytes.len() >= FRAME_SIZE,
-            FrameError::Length(bytes.len())
-        );
+    fn try_from(bytes: &[u8]) -> Result<Self> {
+        ensure!(bytes.len() >= FRAME_SIZE, FrameError::Length(bytes.len()));
         // header
         let header = Header::from(&bytes[HEADER_OFFSET..HEADER_OFFSET + HEADER_SIZE]);
         ensure!(header.header == HEADER, FrameError::Header(header.header));
@@ -289,7 +292,10 @@ impl TryFrom<&[u8]> for Frame {
         let calc_checksum = calc_checksum(&bytes[CTRL_FIELD_OFFSET..bytes.len() - LAST_SIZE]);
         ensure!(
             checksum == calc_checksum,
-            FrameError::Checksum{expected: calc_checksum, checksum}
+            FrameError::Checksum {
+                expected: calc_checksum,
+                checksum
+            }
         );
         // tail
         let tail = bytes[bytes.len() - TAIL_SIZE];

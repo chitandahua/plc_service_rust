@@ -1,6 +1,9 @@
+use anyhow::ensure;
 use std::convert::TryFrom;
 use std::fmt::Formatter;
 use std::fmt::{self, Display};
+
+use crate::Result;
 
 pub const INFO_FIELD_SIZE: usize = 6;
 
@@ -45,7 +48,7 @@ pub enum InfoField {
 }
 
 impl InfoField {
-    pub fn from_bytes(info_field_type: InfoFieldType, bytes: &[u8]) -> Result<Self, crate::Error> {
+    pub fn from_bytes(info_field_type: InfoFieldType, bytes: &[u8]) -> Result<Self> {
         match info_field_type {
             InfoFieldType::Down => Ok(InfoField::Down(bytes.try_into()?)),
             InfoFieldType::Up => Ok(InfoField::Up(bytes.try_into()?)),
@@ -67,8 +70,8 @@ impl InfoField {
 impl TryFrom<&[u8]> for InfoFieldDown {
     type Error = crate::Error;
 
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        eusure!(bytes.len() == INFO_FIELD_SIZE, "Invalid info field size");
+    fn try_from(bytes: &[u8]) -> Result<Self> {
+        ensure!(bytes.len() == INFO_FIELD_SIZE, "Invalid info field size");
 
         Ok(InfoFieldDown {
             route_flag: bytes[0] & 0x01,
@@ -89,8 +92,8 @@ impl TryFrom<&[u8]> for InfoFieldDown {
 impl TryFrom<&[u8]> for InfoFieldUp {
     type Error = crate::Error;
 
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        eusure!(bytes.len() == INFO_FIELD_SIZE, "Invalid info field size");
+    fn try_from(bytes: &[u8]) -> Result<Self> {
+        ensure!(bytes.len() == INFO_FIELD_SIZE, "Invalid info field size");
 
         Ok(InfoFieldUp {
             route_flag: bytes[0] & 0x01,

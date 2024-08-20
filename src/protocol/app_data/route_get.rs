@@ -1,9 +1,10 @@
+use anyhow::ensure;
 use std::fmt::Formatter;
 use std::fmt::{self, Display};
-use anyhow::ensure;
 
+use crate::protocol::app_data::{Address, Afn, AppDataError};
 use crate::protocol::AppData;
-use crate::protocol::app_data::{Afn, Address};
+use crate::Result;
 
 pub enum RouteQuery {
     NodeNumber = 1,
@@ -26,7 +27,7 @@ pub struct QueryNodeNumberResponse {
 impl TryFrom<AppData> for QueryNodeNumberResponse {
     type Error = crate::Error;
 
-    fn try_from(app_data: AppData) -> Result<Self, Self::Error> {
+    fn try_from(app_data: AppData) -> Result<Self> {
         app_data.check(Afn::RouteGet, RouteQuery::NodeNumber as u8, 4)?;
 
         let data_units = app_data.data_units.unwrap();
@@ -85,13 +86,13 @@ pub struct QueryNodeInfoResponse {
 impl TryFrom<AppData> for QueryNodeInfoResponse {
     type Error = crate::Error;
 
-    fn try_from(app_data: AppData) -> Result<Self, Self::Error> {
+    fn try_from(app_data: AppData) -> Result<Self> {
         ensure!(
             app_data.data_length() >= NODE_NUMBER_SIZE,
-            AppDataError::DataLength
+            AppDataError::DataLength(app_data.data_length())
         );
 
-        let node_number = app_data.data_units.unwrap()[2] as usize;
+        let node_number = app_data.data_units.as_ref().unwrap()[2] as usize;
         app_data.check(
             Afn::RouteGet,
             RouteQuery::NodeInfo as u8,
@@ -109,7 +110,7 @@ impl TryFrom<AppData> for QueryNodeInfoResponse {
         }
         Ok(Self {
             total_node_number,
-            node_number,
+            node_number: node_number as u8,
             node_infos,
         })
     }

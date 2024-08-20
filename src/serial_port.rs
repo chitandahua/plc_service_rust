@@ -157,8 +157,9 @@ impl StreamReader {
 }
 
 impl StreamWriter {
-    pub fn write_request(&mut self, at_cmd: &str) -> Result<()> {
-        let _ = self.stream.write(at_cmd.as_bytes())?;
+    // TODO
+    pub fn write_request(&mut self, req: impl AsRef<[u8]>) -> Result<()> {
+        let _ = self.stream.write(req.as_ref())?;
         self.stream.flush()?;
 
         Ok(())

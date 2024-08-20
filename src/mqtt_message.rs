@@ -84,6 +84,12 @@ impl MqttMessage {
     pub fn payload(&self) -> &str {
         self.payload.as_str()
     }
+
+    pub fn get_priority(&self) -> u64 {
+        // payload转json 获取prio字段 默认0
+        let payload: Value = serde_json::from_str(self.payload()).unwrap();
+        payload["prio"].as_u64().unwrap_or(0)
+    }
 }
 
 impl TryFrom<paho_mqtt::Message> for MqttMessage {

@@ -1,11 +1,12 @@
+use anyhow::ensure;
 use chrono::NaiveDate;
 use std::fmt::Formatter;
 use std::fmt::{self, Display};
-use anyhow::ensure;
 
-use crate::protocol::AppData;
-use crate::protocol::app_data::{Afn, Address};
+use crate::protocol::app_data::{Address, Afn, AppDataError};
 use crate::protocol::user_data::hex_to_dec;
+use crate::protocol::AppData;
+use crate::Result;
 
 #[derive(Debug)]
 #[repr(u8)]
@@ -60,23 +61,24 @@ impl ModuleInfoResponse {
     }
 
     pub fn date_to_string(date: &NaiveDate) -> String {
-        date.format("%Y-%m-%d").to_string()
+        date.format("%Y%m%d").to_string()
     }
 
-    pub fn from_app_data(app_data: AppData) -> Result<Self, &'static str> {
+    pub fn from_app_data(app_data: AppData) -> Result<Self> {
         ensure!(
             app_data.data_length() >= 39,
             AppDataError::DataLength(app_data.data_length())
         );
 
-        let data_unit = app_data.data_units.unwrap();
-        let speed_num = data_unit[3] & 0x0F;
+        let speed_num = app_data.data_units.as_ref().unwrap()[3] & 0x0F;
         app_data.check(
             Afn::QueryData,
             QueryData::GetModuleInfo as u8,
             39 + speed_num as usize * 2,
         )?;
+        let data_unit = app_data.data_units.unwrap();
 
+        let main_node_addr = data_unit[14..20].iter().rev().cloned().collect::<Vec<_>>();
         let mut response = ModuleInfoResponse {
             comm_mode: (data_unit[0] >> 4) & 0x0F,
             speed_num,
@@ -85,7 +87,7 @@ impl ModuleInfoResponse {
             max_packet_length: u16::from_le_bytes([data_unit[9], data_unit[10]]),
             max_packet_per_packet: u16::from_le_bytes([data_unit[11], data_unit[12]]),
             upgrade_wait_time: data_unit[13],
-            main_node_addr: data_unit[14..20].iter().rev().cloned().collect(),
+            main_node_addr: main_node_addr.try_into().unwrap(),
             max_node_num: u16::from_le_bytes([data_unit[20], data_unit[21]]),
             current_node_num: u16::from_le_bytes([data_unit[22], data_unit[23]]),
             protocol_release_date: Self::date_transfer(data_unit[26], data_unit[25], data_unit[24]),
@@ -129,7 +131,7 @@ impl fmt::Display for ModuleInfoResponse {
         writeln!(f, "max_packet_length: {}", self.max_packet_length)?;
         writeln!(f, "max_packet_per_packet: {}", self.max_packet_per_packet)?;
         writeln!(f, "upgrade_wait_time: {}", self.upgrade_wait_time)?;
-        writeln!(f, "main_node_addr: {}", self.main_node_addr)?;
+        writeln!(f, "main_node_addr: {}", hex::encode(self.main_node_addr))?;
         writeln!(f, "max_node_num: {}", self.max_node_num)?;
         writeln!(f, "current_node_num: {}", self.current_node_num)?;
         writeln!(

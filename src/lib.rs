@@ -1,3 +1,5 @@
+use std::sync::{mpsc, Arc};
+
 mod cli;
 pub use cli::Args;
 
@@ -12,7 +14,15 @@ mod mqtt_topic;
 use mqtt_topic::{MqttTopic, TopicError};
 
 mod mqtt_handler;
-use mqtt_handler::Handler;
+use mqtt_handler::{Handler, MqttMsgHandler};
+
+mod protocol;
+
+//mod request_info;
+//use request_info::ReqInfo;
+
+//mod uart_agent;
+//use uart_agent::UartAgent;
 
 pub type Error = anyhow::Error;
 
@@ -26,9 +36,14 @@ pub fn run(args: Args) -> Result<()> {
     tracing::debug!("mqtt client start");
 
     let mqtt_client = MqttClient::from_file(MQTT_CONFIG_PATH.into())?;
-    let handler = Handler::new(&mqtt_client);
 
-    let join_handler = mqtt_client.run(handler)?;
+    // mqtt
+    let (sender, receiver) = mpsc::channel();
+    let mqtt_msg_handler = Arc::new(MqttMsgHandler::new(sender, vec![]));
+    let handler = Handler::new(mqtt_msg_handler.clone());
+
+    let mut join_handler = mqtt_client.run(handler, receiver)?;
+    join_handler.push(mqtt_msg_handler.run()?);
 
     for handler in join_handler {
         handler.join().unwrap();

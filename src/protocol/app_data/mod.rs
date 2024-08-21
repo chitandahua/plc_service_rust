@@ -420,7 +420,7 @@ pub mod tests_common {
     use crate::protocol::Frame;
     use hex;
 
-    fn hex_to_bytes(hex_str: &str) -> Vec<u8> {
+    pub fn hex_to_bytes(hex_str: &str) -> Vec<u8> {
         hex::decode(hex_str).expect("Invalid hex string")
     }
 

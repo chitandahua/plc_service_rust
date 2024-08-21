@@ -8,6 +8,7 @@ use crate::protocol::user_data::hex_to_dec;
 use crate::protocol::AppData;
 use crate::Result;
 
+// AFN 03H
 #[derive(Debug)]
 #[repr(u8)]
 pub enum QueryData {
@@ -63,8 +64,11 @@ impl ModuleInfoResponse {
     pub fn date_to_string(date: &NaiveDate) -> String {
         date.format("%Y%m%d").to_string()
     }
+}
 
-    pub fn from_app_data(app_data: AppData) -> Result<Self> {
+impl TryFrom<AppData> for ModuleInfoResponse {
+    type Error = crate::Error;
+    fn try_from(app_data: AppData) -> std::result::Result<Self, Self::Error> {
         ensure!(
             app_data.data_length() >= 39,
             AppDataError::DataLength(app_data.data_length())
@@ -161,5 +165,70 @@ impl fmt::Display for ModuleInfoResponse {
             )?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::app_data::*;
+    use crate::protocol::Frame;
+
+    #[test]
+    fn test_module_info_request() {
+        let frame_str = "680f00430000000000000302014916";
+        let frame = tests_common::create_frame_from_hex(frame_str);
+
+        let module_info_request = ModuleInfoRequest {};
+        assert_eq!(frame.into_app_data(), module_info_request.into());
+    }
+
+    #[test]
+    fn test_module_info_response() {
+        let frame_str = "68270083000000000004030201000000020000030500ffff12341078901268010243001c0018080730073368787a620112240023218200233c16";
+        let frame = tests_common::create_frame_from_hex(frame_str);
+
+        let module_info_response = ModuleInfoResponse::try_from(frame.into_app_data()).unwrap();
+        assert_eq!(module_info_response.comm_mode, 0);
+        assert_eq!(module_info_response.max_timeout_time, 0x03);
+        assert_eq!(module_info_response.broadcast_cmd_timeout_time, 0x0005);
+        assert_eq!(module_info_response.max_packet_length, 0xffff);
+        assert_eq!(module_info_response.max_packet_per_packet, 0x3412);
+        assert_eq!(module_info_response.upgrade_wait_time, 0x10);
+        assert_eq!(
+            module_info_response.main_node_addr,
+            Address::new([0x02, 0x01, 0x68, 0x12, 0x90, 0x78])
+        );
+        assert_eq!(module_info_response.max_node_num, 0x0043);
+        assert_eq!(module_info_response.current_node_num, 0x001c);
+        assert_eq!(
+            module_info_response.protocol_release_date,
+            NaiveDate::from_ymd(2007, 8, 18)
+        );
+        assert_eq!(
+            module_info_response.last_record_date,
+            NaiveDate::from_ymd(2033, 7, 30)
+        );
+        assert_eq!(module_info_response.factory_code, "xh");
+        assert_eq!(module_info_response.chip_code, "bz");
+        assert_eq!(
+            module_info_response.version_date,
+            NaiveDate::from_ymd(2024, 12, 1)
+        );
+
+        assert_eq!(module_info_response.version, 0x2300);
+        assert_eq!(module_info_response.comm_speed, vec![0x8221, 0x2300]);
+    }
+
+    #[test]
+    fn test_date_transfer() {
+        let date = NaiveDate::from_ymd(2007, 8, 18);
+        assert_eq!(ModuleInfoResponse::date_transfer(0x07, 0x08, 0x18), date);
+    }
+
+    #[test]
+    fn test_date_to_string() {
+        let date = NaiveDate::from_ymd(2007, 8, 18);
+        assert_eq!(ModuleInfoResponse::date_to_string(&date), "20070818");
     }
 }

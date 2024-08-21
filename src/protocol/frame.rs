@@ -8,7 +8,7 @@ use strum_macros::{EnumString, ToString};
 use thiserror::Error;
 
 use crate::protocol::app_data::{Afn, AnswerFn};
-use crate::protocol::{info_field, AppData, UserData};
+use crate::protocol::{info_field, Address, AppData, UserData};
 use crate::Result;
 
 #[derive(Debug, Clone)]
@@ -430,10 +430,9 @@ mod tests {
 
     #[test]
     fn test_frame_checksum() {
-        let frame = Frame::new_request(create_dummy_app_data());
+        let frame = tests_common::create_frame_from_hex("680f00430000000000000102004616");
         let bytes = frame.to_bytes();
-        let calculated_checksum = calc_checksum(&bytes[CTRL_FIELD_OFFSET..bytes.len() - LAST_SIZE]);
-        assert_eq!(frame.checksum.checksum, calculated_checksum);
+        assert_eq!(frame.checksum.checksum, 0x46);
     }
 
     #[test]
@@ -583,12 +582,12 @@ mod tests {
 
         let address_field = user_data.address_field.unwrap();
         assert_eq!(
-            address_field.src_address.0,
-            [0x12, 0x34, 0x56, 0x67, 0x89, 0xAB]
+            address_field.src_address,
+            Address::new([0x12, 0x34, 0x56, 0x67, 0x89, 0xAB])
         );
         assert_eq!(
-            address_field.dst_address.0,
-            [0x21, 0x43, 0x56, 0x67, 0x89, 0xAB]
+            address_field.dst_address,
+            Address::new([0x21, 0x43, 0x56, 0x67, 0x89, 0xAB])
         );
         assert!(address_field.relay_address.is_none());
 

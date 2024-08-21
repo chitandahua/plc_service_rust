@@ -4,16 +4,19 @@ use std::fmt::{self, Display};
 use crate::protocol::app_data::{Address, Afn};
 use crate::protocol::AppData;
 
+// AFN 11H
 pub enum RouteSet {
     AddNode = 1,
     DelNode = 2,
 }
 
+#[derive(Debug, PartialEq)]
 pub struct NodeInfo {
     src_addr: Address,
     protocol_type: u8,
 }
 
+#[derive(Debug, PartialEq)]
 pub struct AddNodeRequest {
     node_infos: Vec<NodeInfo>,
 }
@@ -21,7 +24,7 @@ pub struct AddNodeRequest {
 impl From<AddNodeRequest> for AppData {
     fn from(request: AddNodeRequest) -> Self {
         let mut data = Vec::new();
-        data.push(data.len() as u8);
+        data.push(request.node_infos.len() as u8);
         for node in request.node_infos {
             data.extend(node.src_addr);
             data.push(node.protocol_type);
@@ -30,6 +33,7 @@ impl From<AddNodeRequest> for AppData {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct DelNodeRequest {
     node_addrs: Vec<Address>,
 }
@@ -37,10 +41,60 @@ pub struct DelNodeRequest {
 impl From<DelNodeRequest> for AppData {
     fn from(request: DelNodeRequest) -> Self {
         let mut data = Vec::new();
-        data.push(data.len() as u8);
+        data.push(request.node_addrs.len() as u8);
         for addr in request.node_addrs {
             data.extend(addr);
         }
         AppData::new(Afn::RouteSet, RouteSet::DelNode as u8, Some(data))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::app_data::*;
+    use crate::protocol::Frame;
+
+    #[test]
+    fn test_add_node_request() {
+        let frame = tests_common::create_frame_from_hex(
+            "6825004300000000000011010003ab896756341201ab896756341302ab8967563414030616",
+        );
+
+        let add_node_request = AddNodeRequest {
+            node_infos: vec![
+                NodeInfo {
+                    src_addr: Address::new([0x12, 0x34, 0x56, 0x67, 0x89, 0xab]),
+                    protocol_type: 0x01,
+                },
+                NodeInfo {
+                    src_addr: Address::new([0x13, 0x34, 0x56, 0x67, 0x89, 0xab]),
+                    protocol_type: 0x02,
+                },
+                NodeInfo {
+                    src_addr: Address::new([0x14, 0x34, 0x56, 0x67, 0x89, 0xab]),
+                    protocol_type: 0x03,
+                },
+            ],
+        };
+
+        assert_eq!(frame.into_app_data(), add_node_request.into());
+    }
+
+    #[test]
+    fn test_del_node_request() {
+        let frame = tests_common::create_frame_from_hex(
+            "6822004300000000000011020003ab8967563412ab8967563413ab89675634140116",
+        );
+
+        let del_node_request = DelNodeRequest {
+            node_addrs: vec![
+                Address::new([0x12, 0x34, 0x56, 0x67, 0x89, 0xab]),
+                Address::new([0x13, 0x34, 0x56, 0x67, 0x89, 0xab]),
+                Address::new([0x14, 0x34, 0x56, 0x67, 0x89, 0xab]),
+            ],
+        };
+
+        assert_eq!(frame.into_app_data(), del_node_request.into());
     }
 }

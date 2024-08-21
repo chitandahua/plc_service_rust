@@ -23,9 +23,7 @@ impl From<AddNodeRequest> for AppData {
         let mut data = Vec::new();
         data.push(data.len() as u8);
         for node in request.node_infos {
-            let mut src_addr = node.src_addr.to_vec();
-            src_addr.reverse();
-            data.extend(src_addr);
+            data.extend(node.src_addr);
             data.push(node.protocol_type);
         }
         AppData::new(Afn::RouteSet, RouteSet::AddNode as u8, Some(data))
@@ -41,8 +39,6 @@ impl From<DelNodeRequest> for AppData {
         let mut data = Vec::new();
         data.push(data.len() as u8);
         for addr in request.node_addrs {
-            let mut addr = addr.to_vec();
-            addr.reverse();
             data.extend(addr);
         }
         AppData::new(Afn::RouteSet, RouteSet::DelNode as u8, Some(data))

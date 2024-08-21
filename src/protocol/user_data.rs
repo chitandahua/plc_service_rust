@@ -5,7 +5,7 @@ use anyhow::ensure;
 use serde_json::map::Iter;
 
 use crate::protocol::info_field::{self, InfoFieldType};
-use crate::protocol::Address;
+use crate::protocol::{Address, ADDR_LEN};
 use crate::protocol::{AppData, InfoField};
 use crate::Result;
 
@@ -24,9 +24,7 @@ pub struct AddressField {
 
 impl AddressField {
     fn length(&self) -> usize {
-        self.src_address.len()
-            + self.relay_address.as_ref().map_or(0, |r| r.len())
-            + self.dst_address.len()
+        ADDR_LEN * (2 + self.relay_address.as_ref().map_or(0, |r| r.len()))
     }
 }
 
@@ -47,41 +45,19 @@ impl From<AddressField> for Vec<u8> {
 impl TryFrom<&[u8]> for AddressField {
     type Error = crate::Error;
     fn try_from(bytes: &[u8]) -> Result<Self> {
-        let addr_len: usize = Address::default().len(); // TODO
         Ok(AddressField {
-            // TODO
-            src_address: bytes[..addr_len]
-                .iter()
-                .rev()
-                .cloned()
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-            relay_address: if bytes.len() > addr_len * 2 {
+            src_address: bytes[..ADDR_LEN].try_into().unwrap(),
+            relay_address: if bytes.len() > ADDR_LEN * 2 {
                 Some(
-                    bytes[addr_len..bytes.len() - addr_len]
-                        .chunks(addr_len)
-                        .map(|b| {
-                            b.iter()
-                                .rev()
-                                .cloned()
-                                .collect::<Vec<_>>()
-                                .try_into()
-                                .unwrap()
-                        }) // b.try_into().unwrap(
+                    bytes[ADDR_LEN..bytes.len() - ADDR_LEN]
+                        .chunks(ADDR_LEN)
+                        .map(|b| b.try_into().unwrap())
                         .collect(),
                 )
             } else {
                 None
             },
-            //dst_address: bytes[bytes.len() - addr_len..].try_into()?,
-            dst_address: bytes[bytes.len() - addr_len..]
-                .iter()
-                .rev()
-                .cloned()
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
+            dst_address: bytes[bytes.len() - ADDR_LEN..].try_into().unwrap(),
         })
     }
 }
@@ -96,13 +72,13 @@ impl IntoIterator for AddressField {
 
 impl fmt::Display for AddressField {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "src_address: {}", hex::encode(self.src_address))?;
+        writeln!(f, "src_address: {}", self.src_address)?;
         if let Some(relay_address) = self.relay_address.as_ref() {
             for address in relay_address {
-                writeln!(f, "relay_address: {}", hex::encode(address))?;
+                writeln!(f, "relay_address: {}", address)?;
             }
         }
-        writeln!(f, "dst_address: {}", hex::encode(self.dst_address))
+        writeln!(f, "dst_address: {}", self.dst_address)
     }
 }
 
@@ -141,8 +117,7 @@ impl UserData {
         if info_field.comm_model_mark() == 1 {
             // 中继地址数量为relay_level
             let relay_level = info_field.relay_level();
-            let addr_len: usize = Address::default().len();
-            let len = (relay_level as usize + 2) * addr_len;
+            let len = (relay_level as usize + 2) * ADDR_LEN;
             ensure!(
                 bytes.len() >= info_field::INFO_FIELD_SIZE + len,
                 "address field length error"

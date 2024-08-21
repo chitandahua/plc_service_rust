@@ -583,11 +583,11 @@ mod tests {
 
         let address_field = user_data.address_field.unwrap();
         assert_eq!(
-            address_field.src_address,
+            address_field.src_address.0,
             [0x12, 0x34, 0x56, 0x67, 0x89, 0xAB]
         );
         assert_eq!(
-            address_field.dst_address,
+            address_field.dst_address.0,
             [0x21, 0x43, 0x56, 0x67, 0x89, 0xAB]
         );
         assert!(address_field.relay_address.is_none());

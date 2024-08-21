@@ -1,8 +1,7 @@
 use crate::Result;
 use anyhow::{bail, ensure};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use std::fmt::Formatter;
-use std::fmt::{self, Display};
+use std::fmt::{self, Display, Formatter};
 use strum_macros::{EnumString, ToString};
 use thiserror::Error;
 
@@ -30,16 +29,54 @@ pub use route_get::{
 mod route_set;
 pub use route_set::{AddNodeRequest, DelNodeRequest, RouteSet};
 
-pub type Address = [u8; 6];
+pub const ADDR_LEN: usize = 6;
+#[derive(Debug, Clone, PartialEq)]
+pub struct Address([u8; ADDR_LEN]);
 
-//impl Display for Address {
-//    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//        for &value in self.iter() {
-//            write!(f, "{:02}", hex_to_dec(value))?;
-//        }
-//        Ok(())
-//    }
-//}
+impl Address {
+    pub fn new(addr: [u8; ADDR_LEN]) -> Self {
+        Self(addr)
+    }
+}
+
+impl Display for Address {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{}", hex::encode(self.0))
+    }
+}
+
+impl TryFrom<&[u8]> for Address {
+    type Error = crate::Error;
+    fn try_from(data: &[u8]) -> Result<Self> {
+        ensure!(data.len() == ADDR_LEN, "address length error");
+        //let mut address = [0u8; ADDR_LEN];
+        //address.copy_from_slice(data);
+        let address = data
+            .iter()
+            .rev()
+            .cloned()
+            .collect::<Vec<u8>>()
+            .try_into()
+            .unwrap();
+        Ok(Self(address))
+    }
+}
+
+impl From<Address> for Vec<u8> {
+    fn from(address: Address) -> Self {
+        address.0.into_iter().rev().collect()
+    }
+}
+
+impl IntoIterator for Address {
+    type Item = u8;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+    //type IntoIter = std::array::IntoIter<Self::Item, ADDR_LEN>;
+    fn into_iter(self) -> Self::IntoIter {
+        Into::<Vec<u8>>::into(self).into_iter()
+        //self.0.into_iter().rev()
+    }
+}
 
 const AFN_SIZE: usize = 1;
 const DATA_FLAG_SIZE: usize = 2;

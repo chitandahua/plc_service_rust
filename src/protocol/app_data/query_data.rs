@@ -54,11 +54,13 @@ pub struct ModuleInfoResponse {
 
 impl ModuleInfoResponse {
     fn date_transfer(year: u8, month: u8, day: u8) -> NaiveDate {
-        NaiveDate::from_ymd(
+        //debug!("{:02x}-{:02x}-{:02x}", year, month, day);
+        NaiveDate::from_ymd_opt(
             2000 + hex_to_dec(year) as i32,
             hex_to_dec(month) as u32,
             hex_to_dec(day) as u32,
         )
+        .unwrap() // TODO
     }
 
     pub fn date_to_string(date: &NaiveDate) -> String {
@@ -203,17 +205,17 @@ mod tests {
         assert_eq!(module_info_response.current_node_num, 0x001c);
         assert_eq!(
             module_info_response.protocol_release_date,
-            NaiveDate::from_ymd(2007, 8, 18)
+            NaiveDate::from_ymd_opt(2007, 8, 18)
         );
         assert_eq!(
             module_info_response.last_record_date,
-            NaiveDate::from_ymd(2033, 7, 30)
+            NaiveDate::from_ymd_opt(2033, 7, 30)
         );
         assert_eq!(module_info_response.factory_code, "xh");
         assert_eq!(module_info_response.chip_code, "bz");
         assert_eq!(
             module_info_response.version_date,
-            NaiveDate::from_ymd(2024, 12, 1)
+            NaiveDate::from_ymd_opt(2024, 12, 1)
         );
 
         assert_eq!(module_info_response.version, 0x2300);
@@ -222,13 +224,13 @@ mod tests {
 
     #[test]
     fn test_date_transfer() {
-        let date = NaiveDate::from_ymd(2007, 8, 18);
+        let date = NaiveDate::from_ymd_opt(2007, 8, 18);
         assert_eq!(ModuleInfoResponse::date_transfer(0x07, 0x08, 0x18), date);
     }
 
     #[test]
     fn test_date_to_string() {
-        let date = NaiveDate::from_ymd(2007, 8, 18);
+        let date = NaiveDate::from_ymd_opt(2007, 8, 18);
         assert_eq!(ModuleInfoResponse::date_to_string(&date), "20070818");
     }
 }

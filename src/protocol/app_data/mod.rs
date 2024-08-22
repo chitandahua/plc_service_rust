@@ -41,7 +41,7 @@ impl Address {
 
 impl Display for Address {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{}", hex::encode(self.0))
+        write!(f, "{}", hex::encode(self.0))
     }
 }
 

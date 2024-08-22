@@ -1,4 +1,4 @@
-mod app_data;
+pub mod app_data;
 pub use app_data::{Address, AppData, ADDR_LEN};
 
 mod frame;

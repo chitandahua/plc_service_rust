@@ -3,9 +3,12 @@ use core::fmt;
 use serde::Deserialize;
 use serialport::SerialPort;
 use std::io::{self, Cursor, Read, Write};
+use std::net::SocketAddr;
 use std::net::TcpStream;
+use std::path::PathBuf;
 use tracing::{debug, info};
 
+use crate::protocol::Frame;
 use crate::Result;
 
 #[derive(Debug, Deserialize)]
@@ -20,7 +23,7 @@ struct UartConfig {
     stop_bit: u8,
 }
 
-pub struct SerialPort {
+pub struct UartPort {
     pub reader: StreamReader,
     pub writer: StreamWriter,
 }
@@ -56,16 +59,16 @@ impl Write for SerialPortAdapter {
 
 impl UartConfig {
     fn open(self) -> serialport::Result<Box<dyn SerialPort>> {
-        serialport::new(self.port, self.baudrate)
+        serialport::new(self.port, self.baud_rate)
             .timeout(std::time::Duration::from_millis(100))
-            .data_bits(match self.wordlength {
+            .data_bits(match self.word_length {
                 5 => serialport::DataBits::Five,
                 6 => serialport::DataBits::Six,
                 7 => serialport::DataBits::Seven,
                 8 => serialport::DataBits::Eight,
                 _ => serialport::DataBits::Eight,
             })
-            .stop_bits(match self.stopbit {
+            .stop_bits(match self.stop_bit {
                 1 => serialport::StopBits::One,
                 2 => serialport::StopBits::Two,
                 _ => serialport::StopBits::One,
@@ -82,8 +85,8 @@ impl UartConfig {
     }
 }
 
-impl SerialPort {
-    pub fn new(uart_config: PathBuf, tcp_addr: Option<SockAddr>) -> Result<SerialPort> {
+impl UartPort {
+    pub fn new(uart_config: PathBuf, tcp_addr: Option<SocketAddr>) -> Result<UartPort> {
         let write_stream: Box<dyn Write + Send>;
         let read_stream: Box<dyn Read + Send>;
         if tcp_addr.is_some() {
@@ -91,8 +94,7 @@ impl SerialPort {
             write_stream = Box::new(stream.try_clone()?);
             read_stream = Box::new(stream);
         } else {
-            let config: UartConfig =
-                serde_json::from_reader(std::fs::File::open(uart_config)?)?;
+            let config: UartConfig = serde_json::from_reader(std::fs::File::open(uart_config)?)?;
             let stream = config.open()?;
             write_stream = Box::new(SerialPortAdapter {
                 port: stream.try_clone()?,
@@ -106,7 +108,7 @@ impl SerialPort {
             //read_stream = Box::new(*stream) as Box<dyn Read + Send>;
         }
 
-        Ok(SerialPort {
+        Ok(UartPort {
             reader: StreamReader {
                 stream: read_stream,
                 buffer: BytesMut::with_capacity(4 * 1024),
@@ -119,16 +121,16 @@ impl SerialPort {
 }
 
 impl StreamReader {
-    pub fn read_response(&mut self) -> Result<Option<AtCmd>> {
+    pub fn read_response(&mut self) -> Result<Option<Frame>> {
         loop {
             let mut buffer = [0; 1024];
             match self.stream.read(&mut buffer)? {
                 0 => {
                     if self.buffer.is_empty() {
                         info!("connection close");
-                        return Err(ConnectionError::Closed.into());
+                        return Err(anyhow::anyhow!("connection close"));
                     } else {
-                        return Err("connection reset by perr".into());
+                        return Err(anyhow::anyhow!("connection reset by perr"));
                     }
                 }
                 n => {
@@ -145,7 +147,7 @@ impl StreamReader {
 
     fn parse_frame(&mut self) -> Result<Option<Frame>> {
         let mut buf = Cursor::new(&self.buffer[..]);
-        match Frame::read_response(&mut buf)? {
+        match Frame::parse(&mut buf)? {
             Some(response) => {
                 let len = buf.position() as usize;
                 self.buffer.advance(len);

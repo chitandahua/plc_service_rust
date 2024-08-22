@@ -90,6 +90,12 @@ impl MqttMessage {
         let payload: Value = serde_json::from_str(self.payload()).unwrap();
         payload["prio"].as_u64().unwrap_or(0)
     }
+
+    pub fn get_token(&self) -> String {
+        // payload转json 获取token字段
+        let payload: Value = serde_json::from_str(self.payload()).unwrap();
+        payload["token"].as_str().unwrap().to_owned()
+    }
 }
 
 impl TryFrom<paho_mqtt::Message> for MqttMessage {

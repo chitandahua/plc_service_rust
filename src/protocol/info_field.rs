@@ -56,16 +56,23 @@ impl InfoField {
         }
     }
 
-    pub fn new(info_field_type: InfoFieldType, seq: u8, comm_model_mark: u8) -> Self {
+    pub fn new(
+        info_field_type: InfoFieldType,
+        seq: u8,
+        relay_level: u8,
+        comm_model_mark: u8,
+    ) -> Self {
         match info_field_type {
             InfoFieldType::Down => InfoField::Down(InfoFieldDown {
                 seq_num: seq,
                 comm_model_mark,
+                relay_level,
                 ..Default::default()
             }),
             InfoFieldType::Up => InfoField::Up(InfoFieldUp {
                 seq_num: seq,
                 comm_model_mark,
+                relay_level,
                 ..Default::default()
             }),
         }
@@ -315,7 +322,7 @@ mod info_field_tests {
 
     #[test]
     fn test_new_info_field() {
-        let down = InfoField::new(InfoFieldType::Down, 5, 1);
+        let down = InfoField::new(InfoFieldType::Down, 5, 0, 1);
         if let InfoField::Down(down) = down {
             assert_eq!(down.seq_num, 5);
             assert_eq!(down.comm_model_mark, 1);
@@ -323,7 +330,7 @@ mod info_field_tests {
             panic!("Expected InfoField::Down");
         }
 
-        let up = InfoField::new(InfoFieldType::Up, 6, 0);
+        let up = InfoField::new(InfoFieldType::Up, 6, 0, 0);
         if let InfoField::Up(up) = up {
             assert_eq!(up.seq_num, 6);
             assert_eq!(up.comm_model_mark, 0);
@@ -334,10 +341,10 @@ mod info_field_tests {
 
     #[test]
     fn test_get_type() {
-        let down = InfoField::new(InfoFieldType::Down, 5, 1);
+        let down = InfoField::new(InfoFieldType::Down, 5, 0, 1);
         assert_eq!(down.get_type(), InfoFieldType::Down);
 
-        let up = InfoField::new(InfoFieldType::Up, 6, 0);
+        let up = InfoField::new(InfoFieldType::Up, 6, 0, 0);
         assert_eq!(up.get_type(), InfoFieldType::Up);
     }
 

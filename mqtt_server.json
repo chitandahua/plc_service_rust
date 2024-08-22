@@ -2,6 +2,7 @@
     "Password": "123456",
     "ServiceIp": "192.168.8.231",
     "ServicePort": 1883,
-    "Username": "admin"
+    "Username": "admin",
+    "ClientId": "plc_service"
 }
 

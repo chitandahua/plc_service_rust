@@ -221,7 +221,7 @@ static SEQ: AtomicU8 = AtomicU8::new(0);
 
 impl Frame {
     fn new(is_response: bool, seq: u8, app_data: AppData) -> Self {
-        let user_data = UserData::new(seq, app_data);
+        let user_data = UserData::new(seq, None, app_data);
         let mut frame = Frame {
             header: Header::new((FRAME_SIZE + user_data.length()) as u16),
             ctrl_field: CtrlField::new(is_response),
@@ -295,6 +295,18 @@ impl Frame {
 
     pub fn get_seq(&self) -> u8 {
         self.user_data.get_seq()
+    }
+
+    pub fn afn(&self) -> Afn {
+        self.user_data.app_data.afn()
+    }
+
+    pub fn fn_num(&self) -> u8 {
+        self.user_data.app_data.fn_num()
+    }
+
+    pub fn match_req(&self, seq: u8) -> bool {
+        self.user_data.get_seq() == seq
     }
 }
 
@@ -431,7 +443,6 @@ mod tests {
     #[test]
     fn test_frame_checksum() {
         let frame = tests_common::create_frame_from_hex("680f00430000000000000102004616");
-        let bytes = frame.to_bytes();
         assert_eq!(frame.checksum.checksum, 0x46);
     }
 

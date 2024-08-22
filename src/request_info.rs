@@ -1,53 +1,79 @@
-use std::any::Any;
+use crate::protocol::Frame;
 use crate::MqttTopic;
+use std::any::Any;
 
 // TODO 使用enum？
 #[derive(Debug, Default)]
-struct FrameKey {
-    afn: u8,
-    fn_num: u8,
-}
+pub struct FrameKey(pub u8, pub u8);
 
 #[derive(Debug)]
-struct MqttReqInfo {
-    topic: MqttTopic,
-    token: String,
-    extra_data: Option<Box<dyn Any>>,
+pub struct MqttReqInfo {
+    pub topic: MqttTopic,
+    pub token: String,
+    pub extra_data: Option<Box<dyn Any + Send>>,
+}
+
+impl MqttReqInfo {
+    pub fn new(topic: String, token: String) -> Self {
+        MqttReqInfo {
+            topic: MqttTopic::try_from(topic.as_str()).unwrap(),
+            token,
+            extra_data: None,
+        }
+    }
+
+    pub fn new_with_data(topic: String, token: String, extra_data: Box<dyn Any + Send>) -> Self {
+        MqttReqInfo {
+            topic: MqttTopic::try_from(topic.as_str()).unwrap(),
+            token,
+            extra_data: Some(extra_data),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
 pub struct ReqInfo {
-    mqtt_req_info: Option<MqttReqInfo>,
-    frame_key: FrameKey,
-    seq_num: u8,
+    pub mqtt_req_info: Option<MqttReqInfo>,
+    pub frame_key: FrameKey,
+    pub seq_num: u8,
     // 超时回调？ TODO
     // timeout_cb: Box<dyn Fn() + Send>,
 }
 
 impl ReqInfo {
-    fn new(frame: &Frame, mqtt_req_info: Option<MqttReqInfo>) -> Self {
+    pub fn new(frame: &Frame) -> Self {
         ReqInfo {
-            mqtt_req_info,
-            frame_key: FrameKey {
-                afn: frame.afn(),
-                fn_num: frame.fn_num(),
-            },
-            seq_num: frame.seq_num(),
+            mqtt_req_info: None,
+            frame_key: FrameKey(frame.afn().into(), frame.fn_num()),
+            seq_num: frame.get_seq(),
         }
+    }
+
+    pub fn new_with_mqtt(
+        frame: &Frame,
+        topic: impl Into<String>,
+        token: impl Into<String>,
+    ) -> Self {
+        ReqInfo {
+            mqtt_req_info: Some(MqttReqInfo::new(topic.into(), token.into())),
+            frame_key: FrameKey(frame.afn().into(), frame.fn_num()),
+            seq_num: frame.get_seq(),
+        }
+    }
+
+    pub fn is_init(&self) -> bool {
+        self.mqtt_req_info.is_none()
     }
 }
 
 #[derive(Debug)]
 pub struct UartMessage {
-    req_info: ReqInfo,
-    frame: Frame,
+    pub req_info: ReqInfo,
+    pub frame: Frame,
 }
 
 impl UartMessage {
-    fn new(req_info: ReqInfo, frame: Frame) -> Self {
-        UartMessage {
-            req_info,
-            frame,
-        }
+    pub fn new(req_info: ReqInfo, frame: Frame) -> Self {
+        UartMessage { req_info, frame }
     }
 }

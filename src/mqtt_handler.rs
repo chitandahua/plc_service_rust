@@ -55,13 +55,40 @@ impl PriorityMessage {
     }
 }
 
+struct PriorityQueue {
+    queue: Mutex<BinaryHeap<PriorityMessage>>,
+    cond: Condvar,
+}
+
+impl PriorityQueue {
+    fn new() -> Self {
+        PriorityQueue {
+            queue: Mutex::new(BinaryHeap::new()),
+            cond: Condvar::new(),
+        }
+    }
+
+    fn push(&self, message: PriorityMessage) {
+        let mut queue = self.queue.lock().unwrap();
+        queue.push(message);
+        self.cond.notify_one();
+    }
+
+    fn pop(&self) -> PriorityMessage {
+        let mut queue = self.queue.lock().unwrap();
+        while queue.is_empty() {
+            queue = self.cond.wait(queue).unwrap();
+        }
+        queue.pop().unwrap()
+    }
+}
+
 #[derive(Clone)]
 pub struct MqttMsgHandler {
     mqtt_msg_sender: mpsc::Sender<MqttMessage>, // TODO 不需要？
     uart_msg_sender: mpsc::Sender<UartMessage>,
     topics: Vec<String>,
-    priority_queue: Arc<Mutex<BinaryHeap<PriorityMessage>>>,
-    cond: Arc<Condvar>,
+    priority_queue: Arc<PriorityQueue>,
 }
 
 impl MqttMsgHandler {
@@ -74,8 +101,7 @@ impl MqttMsgHandler {
             mqtt_msg_sender,
             uart_msg_sender,
             topics,
-            priority_queue: Arc::new(Mutex::new(BinaryHeap::new())),
-            cond: Arc::new(Condvar::new()),
+            priority_queue: Arc::new(PriorityQueue::new()),
         }
     }
 
@@ -85,17 +111,10 @@ impl MqttMsgHandler {
             uart_msg_sender,
             topics,
             priority_queue,
-            cond,
         } = self.clone();
         let handle = thread::spawn(move || {
             loop {
-                let priority_message = {
-                    let mut priority_queue = priority_queue.lock().unwrap();
-                    while priority_queue.is_empty() {
-                        priority_queue = cond.wait(priority_queue).unwrap();
-                    }
-                    priority_queue.pop().unwrap()
-                };
+                let priority_message = priority_queue.pop();
                 debug!("priority message: {:?}", priority_message);
                 let message = priority_message.message;
                 let frame = match message.topic() {
@@ -126,9 +145,7 @@ impl MqttMsgHandler {
     pub fn send(&self, message: MqttMessage) -> Result<()> {
         let priority = message.get_priority();
         let priority_message = PriorityMessage::new(message);
-        let mut priority_queue = self.priority_queue.lock().unwrap();
-        priority_queue.push(priority_message);
-        self.cond.notify_one();
+        self.priority_queue.push(priority_message);
         Ok(())
     }
 

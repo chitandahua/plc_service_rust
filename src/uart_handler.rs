@@ -21,11 +21,12 @@ impl UartHandler for UartMsgHandler {
     fn uart_msg_handler(&mut self, message: UartMessage) -> Result<()> {
         debug!(
             "uart msg handler: AFN: {:02x}, Fn: {}",
-            message.req_info.frame_key.0, message.req_info.frame_key.1
+            message.req_info.frame_key().afn(),
+            message.req_info.frame_key().fn_num()
         );
 
-        match message.req_info.frame_key {
-            FrameKey(0x03, 10) => {
+        match message.req_info.frame_key().to_tuple() {
+            (0x03, 10) => {
                 ModuleInfo::module_info_response(message, &self.mqtt_msg_sender)?;
             }
             _ => {}

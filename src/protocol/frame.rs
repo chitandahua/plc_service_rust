@@ -308,6 +308,10 @@ impl Frame {
     pub fn match_req(&self, seq: u8) -> bool {
         self.user_data.get_seq() == seq
     }
+
+    pub fn to_hex_string(&self) -> String {
+        hex::encode(self.to_bytes())
+    }
 }
 
 #[derive(Error, Debug, PartialEq, EnumString)]

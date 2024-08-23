@@ -21,11 +21,11 @@ impl ModuleInfo {
         if message.req_info.is_init() {
             Ok(())
         } else {
-            let mqtt_req_info = message.req_info.mqtt_req_info.unwrap();
+            let mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
             let payload = serde_json::to_value(response)?;
-            let payload = MqttPayload::new_with_token(mqtt_req_info.token, payload);
+            let payload = MqttPayload::new_with_token(mqtt_req_info.token(), payload);
             let message =
-                MqttMessage::new(mqtt_req_info.topic.topic_transfer(), payload.to_string());
+                MqttMessage::new(mqtt_req_info.topic().topic_transfer(), payload.to_string());
             let _ = sender.send(message);
             Ok(())
         }

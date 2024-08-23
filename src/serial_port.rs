@@ -159,7 +159,6 @@ impl StreamReader {
 }
 
 impl StreamWriter {
-    // TODO
     pub fn write_request(&mut self, req: impl AsRef<[u8]>) -> Result<()> {
         let _ = self.stream.write(req.as_ref())?;
         self.stream.flush()?;

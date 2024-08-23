@@ -55,7 +55,7 @@ impl UartAgent {
             const MAX_RETRY: usize = 1; // 不重试
             while let Ok(req_msg) = uart_requeset_receiver.recv() {
                 let UartMessage { req_info, frame } = req_msg;
-                debug!("recv frame {}", frame);
+                debug!("recv request frame {}", frame.to_hex_string());
 
                 let mut cnt = 0;
                 {
@@ -103,14 +103,14 @@ impl UartAgent {
                         let mut msg = cur_req_info_clone.lock().unwrap();
                         let req = msg.take();
                         let info = if response.is_slave_report() {
-                            // req_info =  TODO
-                            None
-                        } else if req.is_some() && response.match_req(req.as_ref().unwrap().seq_num)
+                            ReqInfo::new(response)
+                        } else if req.is_some()
+                            && response.match_req(req.as_ref().unwrap().seq_num())
                         {
-                            // 调用对应处理函数 TODO 锁外调用
+                            // 调用对应处理函数 锁外调用
                             req
                         } else {
-                            // no request or not match TODO
+                            // no request or not match
                             warn!("invalid response");
                             None
                         };

@@ -1,3 +1,4 @@
+use crate::protocol::app_data::Afn;
 use crate::protocol::Frame;
 use crate::MqttTopic;
 use std::any::Any;
@@ -19,8 +20,8 @@ impl FrameKey {
         self.1
     }
 
-    pub fn to_tuple(&self) -> (u8, u8) {
-        (self.0, self.1)
+    pub fn to_tuple(&self) -> (Afn, u8) {
+        (self.0.try_into().unwrap(), self.1)
     }
 }
 

@@ -1,6 +1,7 @@
 use std::sync::mpsc;
 use tracing::debug;
 
+use crate::protocol::app_data::Afn;
 use crate::request_info::FrameKey;
 use crate::MqttMessage;
 use crate::{Result, UartHandler, UartMessage};
@@ -26,7 +27,7 @@ impl UartHandler for UartMsgHandler {
         );
 
         match message.req_info.frame_key().to_tuple() {
-            (0x03, 10) => {
+            (Afn::QueryData, 10) => {
                 ModuleInfo::module_info_response(message, &self.mqtt_msg_sender)?;
             }
             _ => {}

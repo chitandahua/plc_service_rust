@@ -103,7 +103,7 @@ impl UartAgent {
                         let mut msg = cur_req_info_clone.lock().unwrap();
                         let req = msg.take();
                         let info = if response.is_slave_report() {
-                            ReqInfo::new(response)
+                            Some(ReqInfo::new(&response))
                         } else if req.is_some()
                             && response.match_req(req.as_ref().unwrap().seq_num())
                         {

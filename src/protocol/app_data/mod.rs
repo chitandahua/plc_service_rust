@@ -62,6 +62,15 @@ impl TryFrom<&[u8]> for Address {
     }
 }
 
+impl From<&str> for Address {
+    fn from(value: &str) -> Self {
+        let bytes = hex::decode(value).expect("Invalid hex string");
+        let mut address = [0u8; ADDR_LEN];
+        address.copy_from_slice(&bytes);
+        Self(address)
+    }
+}
+
 impl From<Address> for Vec<u8> {
     fn from(address: Address) -> Self {
         address.0.into_iter().rev().collect()

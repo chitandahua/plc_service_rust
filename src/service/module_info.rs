@@ -1,17 +1,20 @@
 use serde::Serialize;
 use std::sync::mpsc;
+use std::sync::Arc;
 
 use crate::mqtt_message::MqttPayload;
-use crate::protocol::app_data::{self, AppData};
+use crate::protocol::app_data::{self, AppData, ModuleInfoRequest};
+use crate::protocol::Frame;
 use crate::request_info::UartMessage;
-use crate::{MqttMessage, Result};
+use crate::uart_handler::UartMsgHandler;
+use crate::{CallBack, MqttMessage, MqttMsgHandler, ReqInfo, Result};
 
 pub struct ModuleInfo;
 
 impl ModuleInfo {
     pub fn module_info_response(
         message: UartMessage,
-        sender: &mpsc::Sender<MqttMessage>,
+        sender: mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
         let app_data: AppData = message.frame.into_app_data();
         let frame = app_data::ModuleInfoResponse::try_from(app_data)?;
@@ -31,8 +34,31 @@ impl ModuleInfo {
         }
     }
 
-    pub fn topics() -> Vec<String> {
-        vec!["+/get/request/PLCServiceGW/modeInfo".to_string()]
+    pub fn mqtt_get_module_info(
+        message: MqttMessage,
+        uart_msg_sender: mpsc::Sender<UartMessage>,
+    ) -> Result<()> {
+        let frame = Frame::new_request(ModuleInfoRequest.into());
+        let req_info = ReqInfo::new_with_mqtt(&frame, message.topic(), message.get_token());
+        uart_msg_sender
+            .send(UartMessage::new(req_info, frame))
+            .unwrap();
+
+        Ok(())
+    }
+
+    pub fn callback<'a>(
+        _mqtt_msg_sender: &'a mpsc::Sender<MqttMessage>,
+        uart_msg_sender: &'a mpsc::Sender<UartMessage>,
+    ) -> (String, CallBack<'a>) {
+        let callback = |msg| {
+            let uart_msg_sender = uart_msg_sender.clone();
+            Self::mqtt_get_module_info(msg, uart_msg_sender)
+        };
+        (
+            "+/get/request/PLCServiceGW/modeInfo".to_string(),
+            Arc::new(callback),
+        )
     }
 }
 

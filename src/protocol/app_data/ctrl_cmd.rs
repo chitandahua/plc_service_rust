@@ -20,7 +20,7 @@ impl AddressSetRequest {
 }
 
 impl From<AddressSetRequest> for AppData {
-    fn from(mut address_set_request: AddressSetRequest) -> Self {
+    fn from(address_set_request: AddressSetRequest) -> Self {
         AppData::new(
             Afn::CtrlCmd,
             CtrlCmd::SetAddress as u8,

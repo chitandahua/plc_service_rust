@@ -37,6 +37,7 @@ impl UartAgent {
         tcp_addr: Option<SocketAddr>,
         mut handler: impl UartHandler + Send + 'static,
     ) -> Result<Vec<JoinHandle<()>>> {
+        debug!("uart_agent start");
         let UartAgent {
             uart_requeset_receiver,
             cur_req_info,

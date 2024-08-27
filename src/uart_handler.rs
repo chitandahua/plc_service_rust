@@ -9,12 +9,19 @@ use crate::{Result, UartHandler, UartMessage};
 use crate::ModuleInfo;
 
 pub struct UartMsgHandler {
-    mqtt_msg_sender: mpsc::Sender<MqttMessage>,
+    pub mqtt_msg_sender: mpsc::Sender<MqttMessage>,
+    pub uart_msg_sender: mpsc::Sender<UartMessage>,
 }
 
 impl UartMsgHandler {
-    pub fn new(mqtt_msg_sender: mpsc::Sender<MqttMessage>) -> Self {
-        Self { mqtt_msg_sender }
+    pub fn new(
+        mqtt_msg_sender: mpsc::Sender<MqttMessage>,
+        uart_msg_sender: mpsc::Sender<UartMessage>,
+    ) -> Self {
+        Self {
+            mqtt_msg_sender,
+            uart_msg_sender,
+        }
     }
 }
 
@@ -28,7 +35,7 @@ impl UartHandler for UartMsgHandler {
 
         match message.req_info.frame_key().to_tuple() {
             (Afn::QueryData, 10) => {
-                ModuleInfo::module_info_response(message, &self.mqtt_msg_sender)?;
+                ModuleInfo::module_info_response(message, self.mqtt_msg_sender.clone())?;
             }
             _ => {}
         }

@@ -9,8 +9,6 @@ use tracing::{debug, error, info, warn};
 use crate::{ReqInfo, UartMessage};
 use crate::{Result, UartPort};
 
-use crate::protocol::Frame;
-
 #[derive(Debug)]
 pub struct UartAgent {
     uart_requeset_receiver: mpsc::Receiver<UartMessage>,

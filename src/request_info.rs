@@ -29,23 +29,19 @@ impl FrameKey {
 pub struct MqttReqInfo {
     topic: MqttTopic,
     token: String,
-    extra_data: Option<Box<dyn Any + Send>>,
+    extra_data: Option<Box<dyn Any + Send + Sync>>,
 }
 
 impl MqttReqInfo {
-    pub fn new(topic: String, token: String) -> Self {
+    pub fn new(
+        topic: String,
+        token: String,
+        extra_data: Option<Box<dyn Any + Send + Sync>>,
+    ) -> Self {
         MqttReqInfo {
             topic: MqttTopic::try_from(topic.as_str()).unwrap(),
             token,
-            extra_data: None,
-        }
-    }
-
-    pub fn new_with_data(topic: String, token: String, extra_data: Box<dyn Any + Send>) -> Self {
-        MqttReqInfo {
-            topic: MqttTopic::try_from(topic.as_str()).unwrap(),
-            token,
-            extra_data: Some(extra_data),
+            extra_data,
         }
     }
 
@@ -57,8 +53,8 @@ impl MqttReqInfo {
         &self.token
     }
 
-    pub fn into_extra_data(self) -> Option<Box<dyn Any + Send>> {
-        self.extra_data
+    pub fn extra_data(&mut self) -> Option<Box<dyn Any + Send + Sync>> {
+        self.extra_data.take()
     }
 }
 
@@ -84,9 +80,10 @@ impl ReqInfo {
         frame: &Frame,
         topic: impl Into<String>,
         token: impl Into<String>,
+        extra_data: Option<Box<dyn Any + Send + Sync>>,
     ) -> Self {
         ReqInfo {
-            mqtt_req_info: Some(MqttReqInfo::new(topic.into(), token.into())),
+            mqtt_req_info: Some(MqttReqInfo::new(topic.into(), token.into(), extra_data)),
             frame_key: FrameKey(frame.afn().into(), frame.fn_num()),
             seq_num: frame.get_seq(),
         }

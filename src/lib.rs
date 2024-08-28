@@ -17,7 +17,7 @@ mod mqtt_topic;
 use mqtt_topic::{MqttTopic, TopicError};
 
 mod mqtt_handler;
-use mqtt_handler::{CallBack, Handler, MqttMsgHandler};
+use mqtt_handler::{Handler, MqttMsgHandler};
 
 mod protocol;
 
@@ -31,7 +31,7 @@ mod uart_agent;
 use uart_agent::{UartAgent, UartHandler};
 
 mod service;
-use service::{MasterAddress, ModuleInfo};
+use service::{MasterAddress, ModuleInfo, ModuleService};
 
 mod uart_handler;
 use uart_handler::UartMsgHandler;
@@ -55,18 +55,13 @@ pub fn run(args: Args) -> Result<()> {
     let (sender, receiver) = mpsc::channel();
     let (msg_sender, msg_receiver) = mpsc::channel();
 
-    //module_init(&sender, &uart_msg_sender);
-    let module_info_cb = ModuleInfo::callback(&sender, &uart_msg_sender);
-    let master_address = MasterAddress::new("123456789012".to_string());
-    let master_address_cb = master_address.callback(&sender, &uart_msg_sender);
-
-    let mut mqtt_msg_handler = MqttMsgHandler::new(sender.clone(), msg_receiver);
-
-    mqtt_msg_handler.register_req_callback(module_info_cb.0, module_info_cb.1);
-    mqtt_msg_handler.register_req_callback(master_address_cb.0, master_address_cb.1);
+    let mut mqtt_msg_handler =
+        MqttMsgHandler::new(sender.clone(), uart_msg_sender.clone(), msg_receiver);
+    let services = module_init(&mut mqtt_msg_handler);
 
     // uart
-    let mut uart_handler = UartMsgHandler::new(sender.clone(), uart_msg_sender.clone());
+    let uart_handler =
+        UartMsgHandler::new(sender.clone(), uart_msg_sender.clone(), services.clone());
     let uart_agent = UartAgent::new(uart_msg_receiver);
 
     let handler = Handler::new(msg_sender, mqtt_msg_handler.subscribe_topics());
@@ -78,7 +73,7 @@ pub fn run(args: Args) -> Result<()> {
         Some(sock_addr),
         uart_handler,
     )?);
-    join_handler.extend(mqtt_msg_handler.run()?);
+    join_handler.extend(mqtt_msg_handler.run(services)?);
 
     for handler in join_handler {
         handler.join().unwrap();
@@ -88,13 +83,12 @@ pub fn run(args: Args) -> Result<()> {
     Ok(())
 }
 
-fn module_init(
-    mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
-    uart_msg_sender: &mpsc::Sender<UartMessage>,
-) {
-    //ModuleInfo::init(mqtt_msg_sender, mqtt_msg_sender);
-    //let master_address = MasterAddress::new("123456789012".to_string());
-    //master_address.init(mqtt_msg_sender, uart_msg_sender);
+fn module_init(mqtt_msg_handler: &mut MqttMsgHandler) -> ModuleService {
+    ModuleInfo::init(mqtt_msg_handler);
+    let master_address = MasterAddress::new("123456789012".to_string());
+    master_address.init(mqtt_msg_handler);
+
+    ModuleService::new(Arc::new(master_address))
 }
 
 const APP_VERSION: &str = "ST01.000";

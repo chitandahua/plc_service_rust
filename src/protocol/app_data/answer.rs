@@ -100,6 +100,12 @@ pub struct DenyResponse {
     error_code: DenyErrorCode,
 }
 
+impl DenyResponse {
+    pub fn error_code(&self) -> DenyErrorCode {
+        self.error_code.clone()
+    }
+}
+
 impl TryFrom<AppData> for DenyResponse {
     type Error = crate::Error;
     fn try_from(app_data: AppData) -> Result<Self> {

@@ -3,24 +3,28 @@ use tracing::debug;
 
 use crate::protocol::app_data::Afn;
 use crate::request_info::FrameKey;
+use crate::service::ModuleService;
 use crate::MqttMessage;
 use crate::{Result, UartHandler, UartMessage};
 
 use crate::ModuleInfo;
 
 pub struct UartMsgHandler {
-    pub mqtt_msg_sender: mpsc::Sender<MqttMessage>,
-    pub uart_msg_sender: mpsc::Sender<UartMessage>,
+    mqtt_msg_sender: mpsc::Sender<MqttMessage>,
+    uart_msg_sender: mpsc::Sender<UartMessage>,
+    services: ModuleService,
 }
 
 impl UartMsgHandler {
     pub fn new(
         mqtt_msg_sender: mpsc::Sender<MqttMessage>,
         uart_msg_sender: mpsc::Sender<UartMessage>,
+        services: ModuleService,
     ) -> Self {
         Self {
             mqtt_msg_sender,
             uart_msg_sender,
+            services,
         }
     }
 }
@@ -35,9 +39,14 @@ impl UartHandler for UartMsgHandler {
 
         match message.req_info.frame_key().to_tuple() {
             (Afn::QueryData, 10) => {
-                ModuleInfo::module_info_response(message, self.mqtt_msg_sender.clone())?;
+                ModuleInfo::module_info_response(message, &self.mqtt_msg_sender)?;
             }
-            _ => {}
+            (Afn::CtrlCmd, 1) => {
+                self.services
+                    .master_address
+                    .uart_set_address(message, &self.mqtt_msg_sender)?;
+            }
+            _ => todo!(),
         }
 
         Ok(())

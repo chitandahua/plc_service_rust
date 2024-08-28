@@ -2,7 +2,6 @@ use std::fmt::Formatter;
 use std::fmt::{self, Display};
 
 use anyhow::ensure;
-use serde_json::map::Iter;
 
 use crate::protocol::info_field::{self, InfoFieldType};
 use crate::protocol::{Address, ADDR_LEN};

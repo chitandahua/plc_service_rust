@@ -1,16 +1,17 @@
 use crate::protocol::app_data::ModuleInfoRequest;
 use crate::protocol::Frame;
 use crate::request_info::ReqInfo;
+use crate::service::{MasterAddress, ModuleInfo, ModuleService};
 use crate::{MqttClient, MqttHandler, Result};
 use crate::{MqttMessage, TopicError, UartMessage};
 
 use paho_mqtt::TopicFilter;
 use std::sync::atomic::AtomicU64;
 use std::sync::{mpsc, Condvar};
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use std::cmp::Reverse;
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, HashMap};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
@@ -84,43 +85,53 @@ impl PriorityQueue {
     }
 }
 
-pub type CallBack<'a> = Arc<dyn Fn(MqttMessage) -> Result<()> + Send + Sync + 'a>; // fn(MqttMessage) -> Result<()>
+#[derive(Debug, PartialEq)]
+pub enum MqttTopicType {
+    GetModuleInfo,
+    GetMasterAddress,
+    SetMasterAddress,
+}
 
-pub struct MqttMsgHandler<'a> {
-    pub mqtt_msg_sender: mpsc::Sender<MqttMessage>, // TODO 不需要？
-    topics: Vec<String>,
+struct MqttTopicFilter {
+    topic: String,
+    mqtt_topic_type: MqttTopicType,
+    filter: TopicFilter,
+}
+
+pub struct MqttMsgHandler {
+    mqtt_msg_sender: mpsc::Sender<MqttMessage>,
+    uart_msg_sender: mpsc::Sender<UartMessage>,
+    topic_filters: Vec<MqttTopicFilter>,
     priority_queue: Arc<PriorityQueue>,
-    req_callback: Vec<(TopicFilter, CallBack<'a>)>,
-    res_callback: Vec<(TopicFilter, CallBack<'a>)>,
     msg_receiver: mpsc::Receiver<MqttMessage>,
 }
 
-impl<'a> MqttMsgHandler<'a> {
+impl MqttMsgHandler {
     pub fn new(
         mqtt_msg_sender: mpsc::Sender<MqttMessage>,
+        uart_msg_sender: mpsc::Sender<UartMessage>,
         msg_receiver: mpsc::Receiver<MqttMessage>,
     ) -> Self {
         Self {
             mqtt_msg_sender,
-            topics: Vec::new(),
+            uart_msg_sender,
+            topic_filters: Vec::new(),
             priority_queue: Arc::new(PriorityQueue::new()),
-            req_callback: Vec::new(),
-            res_callback: Vec::new(),
             msg_receiver,
         }
     }
 
-    pub fn run(self) -> Result<Vec<JoinHandle<()>>> {
+    pub fn run(self, services: ModuleService) -> Result<Vec<JoinHandle<()>>> {
         debug!("mqtt msg handler run");
         let MqttMsgHandler {
             mqtt_msg_sender,
-            topics,
+            uart_msg_sender,
+            topic_filters,
             priority_queue,
-            req_callback,
-            res_callback,
             msg_receiver,
         } = self;
         let priority_queue_clone = priority_queue.clone();
+
         let msg_handle = thread::spawn(move || loop {
             let message = msg_receiver.recv().unwrap();
             let priority = message.get_priority();
@@ -128,54 +139,58 @@ impl<'a> MqttMsgHandler<'a> {
             priority_queue_clone.push(priority_message);
         });
 
-        // 必须放最后... 否则会阻塞
-        let handle = thread::scope(move |s| {
-            s.spawn(move || {
-                loop {
-                    let priority_message = priority_queue.pop();
-                    debug!("priority message: {:?}", priority_message);
-                    let message = priority_message.message;
+        let handle = thread::spawn(move || {
+            loop {
+                let priority_message = priority_queue.pop();
+                debug!("priority message: {:?}", priority_message);
+                let message = priority_message.message;
 
-                    let topic = message.topic();
-                    if let Some(handler) = req_callback.iter().find(|x| x.0.matches(topic)) {
-                        if let Err(e) = handler.1(message) {
-                            warn!("req callback error: {}", e);
+                let topic = message.topic();
+                let sub_topic = topic_filters
+                    .iter()
+                    .find(|&topic_filter| topic_filter.filter.matches(topic));
+
+                if let Some(sub_topic) = sub_topic {
+                    let result = match sub_topic.mqtt_topic_type {
+                        MqttTopicType::GetModuleInfo => {
+                            ModuleInfo::mqtt_get_module_info(message, &uart_msg_sender)
                         }
-                    } else if let Some(handler) = res_callback.iter().find(|x| x.0.matches(topic)) {
-                        if let Err(e) = handler.1(message) {
-                            warn!("res callback error: {}", e);
+                        MqttTopicType::GetMasterAddress => services
+                            .master_address
+                            .mqtt_get_address(message, &mqtt_msg_sender, &uart_msg_sender),
+                        MqttTopicType::SetMasterAddress => {
+                            MasterAddress::mqtt_set_address(message, &uart_msg_sender)
                         }
-                    } else {
-                        warn!("topic not found: {}", topic);
-                        continue;
+                    };
+
+                    if let Err(e) = result {
+                        error!("mqtt msg handler error: {}", e);
                     }
+                } else {
+                    warn!("unrecognized topic: {}", topic);
                 }
+            }
 
-                warn!("mqtt msg handler exit");
-            })
-            .join()
+            warn!("mqtt msg handler exit");
         });
 
-        Ok(vec![handle.unwrap(), msg_handle])
+        Ok(vec![handle, msg_handle])
     }
 
     pub fn subscribe_topics(&self) -> Vec<String> {
-        self.topics.to_vec()
+        self.topic_filters
+            .iter()
+            .map(|filter| filter.topic.clone())
+            .collect()
     }
 
-    pub fn register_req_callback(&mut self, topic: String, callback: CallBack<'a>) {
-        let topic_filter = TopicFilter::new(topic.as_str()).unwrap();
-        self.topics.push(topic);
-        self.req_callback.push((topic_filter, callback));
-    }
-
-    pub fn register_res_callback<'b>(&'b mut self, topic: String, callback: CallBack<'a>)
-    where
-        'a: 'b,
-    {
-        let topic_filter = TopicFilter::new(topic.as_str()).unwrap();
-        self.topics.push(topic);
-        self.res_callback.push((topic_filter, callback));
+    pub fn add_topic_filter(&mut self, topic: String, mqtt_topic_type: MqttTopicType) {
+        let filter = TopicFilter::new(&topic).unwrap();
+        self.topic_filters.push(MqttTopicFilter {
+            topic,
+            mqtt_topic_type,
+            filter,
+        });
     }
 }
 

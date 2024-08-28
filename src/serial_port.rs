@@ -1,5 +1,4 @@
 use bytes::{Buf, BufMut, BytesMut};
-use core::fmt;
 use serde::Deserialize;
 use serialport::SerialPort;
 use std::io::{self, Cursor, Read, Write};

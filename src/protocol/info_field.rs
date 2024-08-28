@@ -1,7 +1,6 @@
 use anyhow::ensure;
 use std::convert::TryFrom;
-use std::fmt::Formatter;
-use std::fmt::{self, Display};
+use std::fmt;
 
 use crate::Result;
 

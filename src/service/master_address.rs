@@ -1,22 +1,29 @@
-use serde_json::json;
+use serde_json::{json, Value};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use tracing::{error, info};
 
+use crate::mqtt_handler::MqttTopicType;
+use crate::protocol::app_data::{AddressSetRequest, ConfirmResponse};
+use crate::protocol::Frame;
 use crate::{
     mqtt_message::{MqttMessage, MqttPayload},
     mqtt_topic::MqttTopic,
     protocol::app_data::Address,
-    CallBack, MqttMsgHandler, Result, UartMessage, UartMsgHandler, APP_NAME,
+    MqttMsgHandler, ReqInfo, Result, UartMessage, UartMsgHandler, APP_NAME,
 };
+
+use super::{IntoMqttMessage, UartResponse};
 
 pub struct MasterAddress {
     node_addr: NodeAddress,
 }
 
-#[derive(Clone)]
-pub struct NodeAddress {
-    address: Arc<Mutex<Address>>,
+struct NodeAddress {
+    address: Mutex<Address>,
 }
+
+const MASTER_NODE: &str = "masterNode";
 
 impl MasterAddress {
     pub fn new(esn: String) -> Self {
@@ -29,55 +36,98 @@ impl MasterAddress {
 
         MasterAddress {
             node_addr: NodeAddress {
-                address: Arc::new(Mutex::new(Address::from(esn.as_str()))),
+                address: Mutex::new(Address::from(esn.as_str())),
             },
         }
     }
 
-    pub fn node_addr(&self) -> NodeAddress {
-        self.node_addr.clone()
-    }
-
-    pub fn callback<'a>(
-        &'a self,
-        mqtt_msg_sender: &'a mpsc::Sender<MqttMessage>,
-        uart_msg_sender: &'a mpsc::Sender<UartMessage>,
-    ) -> (String, CallBack<'a>) {
-        let get_addr_callback = |msg| {
-            let mqtt_msg_sender = mqtt_msg_sender.clone();
-            let uart_msg_sender = uart_msg_sender.clone();
-            let node_addr = self.node_addr();
-            mqtt_get_address(msg, node_addr, mqtt_msg_sender, uart_msg_sender)
+    pub fn mqtt_get_address(
+        &self,
+        message: MqttMessage,
+        mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) -> Result<()> {
+        let address = {
+            let address = self.node_addr.address.lock().unwrap();
+            address.to_string()
         };
 
-        let get_addr_topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/masterNode");
-        (get_addr_topic, Arc::new(get_addr_callback))
+        let response = json!(
+            {
+                MASTER_NODE: address
+            }
+        );
+
+        let payload = MqttPayload::new_with_token(message.get_token(), response);
+        let topic: MqttTopic = message.topic().try_into().unwrap();
+        mqtt_msg_sender.send(MqttMessage::new(
+            topic.topic_transfer(),
+            payload.to_string(),
+        ))?;
+
+        Ok(())
     }
-}
 
-pub fn mqtt_get_address(
-    message: MqttMessage,
-    node_addr: NodeAddress,
-    mqtt_msg_sender: mpsc::Sender<MqttMessage>,
-    uart_msg_sender: mpsc::Sender<UartMessage>,
-) -> Result<()> {
-    let address = {
-        let address = node_addr.address.lock().unwrap();
-        address.clone()
-    };
+    pub fn mqtt_set_address(
+        message: MqttMessage,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) -> Result<()> {
+        let payload: Value = serde_json::from_str(message.payload()).unwrap();
+        let address = Address::from(payload[MASTER_NODE].as_str().unwrap());
+        let address_clone = address.clone();
 
-    let response = json!(
-        {
-            "masterNode": address.to_string()
+        let request = AddressSetRequest::new(address);
+        let frame = Frame::new_request(request.into());
+        let req_info = ReqInfo::new_with_mqtt(
+            &frame,
+            message.topic(),
+            payload["token"].as_str().unwrap(),
+            Some(Box::new(address_clone)),
+        );
+        uart_msg_sender.send(UartMessage::new(req_info, frame))?;
+
+        Ok(())
+    }
+
+    pub fn uart_set_address(
+        &self,
+        message: UartMessage,
+        mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
+    ) -> Result<()> {
+        let response = UartResponse::<ConfirmResponse>::try_from(message.frame)?;
+        let is_init = message.req_info.is_init();
+
+        match is_init {
+            true => {} // TODO
+            false => {
+                let mut mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
+                let message = match response {
+                    UartResponse::Normal(response) => {
+                        {
+                            let mut address = self.node_addr.address.lock().unwrap();
+                            *address = *mqtt_req_info
+                                .extra_data()
+                                .unwrap()
+                                .downcast::<Address>()
+                                .unwrap();
+                        }
+                        response.into_mqtt_message(mqtt_req_info)
+                    }
+                    UartResponse::Deny(response) => response.into_mqtt_message(mqtt_req_info),
+                };
+                mqtt_msg_sender.send(message)?;
+            }
         }
-    );
 
-    let payload = MqttPayload::new_with_token(message.get_token(), response);
-    let topic: MqttTopic = message.topic().try_into().unwrap();
-    mqtt_msg_sender.send(MqttMessage::new(
-        topic.topic_transfer(),
-        payload.to_string(),
-    ))?;
+        Ok(())
+    }
 
-    Ok(())
+    pub fn init(&self, mqtt_msg_handler: &mut MqttMsgHandler) {
+        const ADDRESS_OBJECT: &str = "/masterNode";
+        let get_address_topic = format!("{}{}{}", "+/get/request/", APP_NAME, ADDRESS_OBJECT);
+        mqtt_msg_handler.add_topic_filter(get_address_topic, MqttTopicType::GetMasterAddress);
+
+        let set_address_topic = format!("{}{}{}", "+/set/request/", APP_NAME, ADDRESS_OBJECT);
+        mqtt_msg_handler.add_topic_filter(set_address_topic, MqttTopicType::SetMasterAddress);
+    }
 }

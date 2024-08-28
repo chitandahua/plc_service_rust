@@ -12,7 +12,9 @@ use crate::APP_NAME;
 pub struct MqttPayload {
     token: String,
     timestamp: String,
-    body: Value,
+    status: &'static str,
+    reason: String,
+    body: Option<Value>,
 }
 
 static TOKEN: AtomicU64 = AtomicU64::new(0);
@@ -23,24 +25,51 @@ impl MqttPayload {
             token: AtomicU64::fetch_add(&TOKEN, 1, std::sync::atomic::Ordering::Relaxed)
                 .to_string(),
             timestamp: get_timestamp(),
-            body,
+            status: "OK",
+            reason: "OK".into(),
+            body: Some(body),
         }
     }
 
-    #[allow(dead_code)]
-    pub fn new_with_token(token: impl Into<String>, body: Value) -> Self {
+    pub fn new_with_status_reason(status: &'static str, reason: String) -> Self {
         Self {
-            token: token.into(),
+            token: AtomicU64::fetch_add(&TOKEN, 1, std::sync::atomic::Ordering::Relaxed)
+                .to_string(),
             timestamp: get_timestamp(),
-            body,
+            status,
+            reason,
+            body: None,
         }
     }
 
-    pub fn body(self) -> Value {
+    pub fn new_with_token(token: impl ToString, body: Value) -> Self {
+        Self {
+            token: token.to_string(),
+            timestamp: get_timestamp(),
+            status: "OK",
+            reason: "OK".into(),
+            body: Some(body),
+        }
+    }
+
+    pub fn new_with_token_status_reason(
+        token: impl ToString,
+        status: &'static str,
+        reason: String,
+    ) -> Self {
+        Self {
+            token: token.to_string(),
+            timestamp: get_timestamp(),
+            status,
+            reason,
+            body: None,
+        }
+    }
+
+    pub fn into_body(self) -> Option<Value> {
         self.body
     }
 
-    #[allow(dead_code)]
     pub fn token(&self) -> &str {
         self.token.as_str()
     }
@@ -70,10 +99,10 @@ pub struct MqttMessage {
 }
 
 impl MqttMessage {
-    pub fn new(topic: impl Into<String>, payload: impl Into<String>) -> Self {
+    pub fn new(topic: impl ToString, payload: impl ToString) -> Self {
         Self {
-            topic: topic.into(),
-            payload: payload.into(),
+            topic: topic.to_string(),
+            payload: payload.to_string(),
         }
     }
 

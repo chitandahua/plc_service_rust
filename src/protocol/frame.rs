@@ -4,11 +4,11 @@ use std::fmt;
 use std::fmt::Formatter;
 use std::io::Cursor;
 use std::sync::atomic::{AtomicU8, Ordering};
-use strum_macros::{EnumString, ToString};
+use strum_macros::EnumString;
 use thiserror::Error;
 
 use crate::protocol::app_data::{Afn, AnswerFn};
-use crate::protocol::{info_field, Address, AppData, UserData};
+use crate::protocol::{info_field, AppData, UserData};
 use crate::Result;
 
 #[derive(Debug, Clone)]

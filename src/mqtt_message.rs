@@ -12,56 +12,59 @@ use crate::APP_NAME;
 pub struct MqttPayload {
     token: String,
     timestamp: String,
-    status: &'static str,
-    reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     body: Option<Value>,
 }
 
 static TOKEN: AtomicU64 = AtomicU64::new(0);
 
 impl MqttPayload {
-    pub fn new(body: Value) -> Self {
+    pub fn new(body: Option<Value>) -> Self {
         Self {
             token: AtomicU64::fetch_add(&TOKEN, 1, std::sync::atomic::Ordering::Relaxed)
                 .to_string(),
             timestamp: get_timestamp(),
-            status: "OK",
-            reason: "OK".into(),
-            body: Some(body),
+            status: None,
+            reason: None,
+            body,
         }
     }
 
-    pub fn new_with_status_reason(status: &'static str, reason: String) -> Self {
+    pub fn new_with_status_reason(status: &'static str, reason: impl ToString) -> Self {
         Self {
             token: AtomicU64::fetch_add(&TOKEN, 1, std::sync::atomic::Ordering::Relaxed)
                 .to_string(),
             timestamp: get_timestamp(),
-            status,
-            reason,
+            status: Some(status),
+            reason: Some(reason.to_string()),
             body: None,
         }
     }
 
-    pub fn new_with_token(token: impl ToString, body: Value) -> Self {
+    pub fn new_with_token(token: impl ToString, body: Option<Value>) -> Self {
         Self {
             token: token.to_string(),
             timestamp: get_timestamp(),
-            status: "OK",
-            reason: "OK".into(),
-            body: Some(body),
+            status: Some("OK"),
+            reason: Some("OK".to_string()),
+            body,
         }
     }
 
     pub fn new_with_token_status_reason(
         token: impl ToString,
         status: &'static str,
-        reason: String,
+        reason: impl ToString,
     ) -> Self {
         Self {
             token: token.to_string(),
             timestamp: get_timestamp(),
-            status,
-            reason,
+            status: Some(status),
+            reason: Some(reason.to_string()),
             body: None,
         }
     }

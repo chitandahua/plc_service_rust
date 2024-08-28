@@ -34,7 +34,7 @@ pub trait IntoMqttMessage {
 
 impl IntoMqttMessage for ConfirmResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        let payload = MqttPayload::new_with_token(mqtt_req_info.token(), Value::Null);
+        let payload = MqttPayload::new_with_token_status_reason(mqtt_req_info.token(), "OK", "OK");
         MqttMessage::new(mqtt_req_info.topic().topic_transfer(), payload)
     }
 }
@@ -44,7 +44,7 @@ impl IntoMqttMessage for DenyResponse {
         let payload = MqttPayload::new_with_token_status_reason(
             mqtt_req_info.token(),
             "FAILURE",
-            self.error_code().to_string(),
+            self.error_code(),
         );
         MqttMessage::new(mqtt_req_info.topic().topic_transfer(), payload)
     }

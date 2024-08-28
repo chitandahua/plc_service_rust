@@ -58,7 +58,7 @@ impl MasterAddress {
             }
         );
 
-        let payload = MqttPayload::new_with_token(message.get_token(), response);
+        let payload = MqttPayload::new_with_token(message.get_token(), Some(response));
         let topic: MqttTopic = message.topic().try_into().unwrap();
         mqtt_msg_sender.send(MqttMessage::new(
             topic.topic_transfer(),

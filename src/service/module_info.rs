@@ -27,7 +27,7 @@ impl ModuleInfo {
         } else {
             let mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
             let payload = serde_json::to_value(response)?;
-            let payload = MqttPayload::new_with_token(mqtt_req_info.token(), payload);
+            let payload = MqttPayload::new_with_token(mqtt_req_info.token(), Some(payload));
             let message =
                 MqttMessage::new(mqtt_req_info.topic().topic_transfer(), payload.to_string());
             let _ = sender.send(message);

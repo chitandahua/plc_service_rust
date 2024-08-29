@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
+use crate::request_info::MqttReqInfo;
 use crate::MqttTopic;
 use crate::Result;
 use crate::APP_NAME;
@@ -109,6 +110,28 @@ impl MqttMessage {
         }
     }
 
+    pub fn new_with_msg_body(message: MqttMessage, body: Option<Value>) -> Self {
+        let topic: MqttTopic = message.topic().try_into().unwrap();
+        let payload = MqttPayload::new_with_token(message.get_token(), body);
+
+        Self::new(topic.topic_transfer(), payload)
+    }
+
+    pub fn new_with_msg_status_reason(
+        message: MqttMessage,
+        status: &'static str,
+        reason: impl ToString,
+    ) -> Self {
+        let topic: MqttTopic = message.topic().try_into().unwrap();
+        let payload = MqttPayload::new_with_token_status_reason(
+            message.get_token(),
+            status,
+            reason.to_string(),
+        );
+
+        Self::new(topic.topic_transfer(), payload)
+    }
+
     pub fn topic(&self) -> &str {
         self.topic.as_str()
     }
@@ -127,6 +150,10 @@ impl MqttMessage {
         // payload转json 获取token字段
         let payload: Value = serde_json::from_str(self.payload()).unwrap();
         payload["token"].as_str().unwrap().to_owned()
+    }
+
+    pub fn to_mqtt_req_info(&self) -> MqttReqInfo {
+        MqttReqInfo::new(self.topic(), self.get_token().to_string(), None)
     }
 }
 
@@ -174,8 +201,7 @@ impl MqttCommonResponse {
 
 impl MqttMessage {
     pub fn common_response(topic: &str, _payload: &str) -> Result<Self> {
-        let topic = MqttTopic::try_from(topic).unwrap();
-        let topic = topic.topic_transfer();
+        let topic = MqttTopic::transfer(topic);
         //let payload = MqttPayload::try_from(payload)?;
 
         Ok(MqttMessage::new(topic, ""))

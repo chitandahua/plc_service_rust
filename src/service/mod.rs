@@ -8,6 +8,7 @@ mod master_address;
 pub use master_address::MasterAddress;
 
 mod node_config;
+pub use node_config::NodeInfo;
 
 mod node_manage;
 pub use node_manage::NodeManage;
@@ -20,10 +21,14 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct ModuleService {
     pub master_address: Arc<MasterAddress>,
+    pub node_manage: Arc<NodeManage>,
 }
 
 impl ModuleService {
-    pub fn new(master_address: Arc<MasterAddress>) -> Self {
-        Self { master_address }
+    pub fn new(master_address: MasterAddress, node_manage: NodeManage) -> Self {
+        Self {
+            master_address: Arc::new(master_address),
+            node_manage: Arc::new(node_manage),
+        }
     }
 }

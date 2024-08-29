@@ -88,8 +88,15 @@ impl PriorityQueue {
 #[derive(Debug, PartialEq)]
 pub enum MqttTopicType {
     GetModuleInfo,
+    // 主地址
     GetMasterAddress,
     SetMasterAddress,
+    // 档案
+    AddAcqFiles,
+    GetAcqFiles,
+    GetAcqFilesNum,
+    DelAcqFiles,
+    ClearAcqFiles,
 }
 
 struct MqttTopicFilter {
@@ -161,6 +168,15 @@ impl MqttMsgHandler {
                         MqttTopicType::SetMasterAddress => {
                             MasterAddress::mqtt_set_address(message, &uart_msg_sender)
                         }
+                        MqttTopicType::AddAcqFiles => services.node_manage.mqtt_add_acq_files(
+                            message,
+                            &mqtt_msg_sender,
+                            &uart_msg_sender,
+                        ),
+                        _ => {
+                            error!("unrecognized topic: {}", topic);
+                            Ok(())
+                        }
                     };
 
                     if let Err(e) = result {
@@ -191,6 +207,12 @@ impl MqttMsgHandler {
             mqtt_topic_type,
             filter,
         });
+    }
+
+    pub fn add_topic_filters(&mut self, topic_filters: Vec<(String, MqttTopicType)>) {
+        topic_filters
+            .into_iter()
+            .for_each(|(topic, mqtt_topic_type)| self.add_topic_filter(topic, mqtt_topic_type));
     }
 }
 

@@ -1,6 +1,258 @@
-use super::node_config::NodeConfig;
-use std::sync::{Arc, Mutex};
+use super::node_config::{self, NodeInfo};
+use serde_json::Value;
+use std::path::PathBuf;
+use std::sync::{mpsc, Arc, Condvar, Mutex, MutexGuard};
+use std::time::Duration;
+use tracing::{debug, error, info};
+
+use crate::mqtt_handler::MqttTopicType;
+use crate::mqtt_message::MqttMessage;
+use crate::mqtt_topic::MqttTopic;
+use crate::protocol::app_data::{self, AddNodeRequest, ConfirmResponse};
+use crate::protocol::Frame;
+use crate::request_info::MqttReqInfo;
+use crate::service::UartResponse;
+use crate::UartMessage;
+use crate::{MqttMsgHandler, ReqInfo, Result, APP_NAME};
+
+struct NodeConfig {
+    node_config: node_config::NodeConfig,
+    operation_result: Option<Result<()>>,
+}
 
 pub struct NodeManage {
-    node_config: Arc<Mutex<NodeConfig>>,
+    config_path: Option<PathBuf>,
+    timeout: u64,
+    node_conf: Mutex<NodeConfig>,
+    cond: Condvar,
+}
+
+pub struct NodeInfoData {
+    node_infos: Vec<NodeInfo>,
+}
+
+const ACQ_FILES_CHUNK_SIZE: usize = 10;
+impl NodeManage {
+    pub fn new(config_path: Option<PathBuf>, timeout: u64) -> Self {
+        Self {
+            config_path,
+            timeout,
+            node_conf: Mutex::new(NodeConfig {
+                node_config: node_config::NodeConfig::new(),
+                operation_result: None,
+            }),
+            cond: Condvar::new(),
+        }
+    }
+
+    pub fn init(&self, mqtt_msg_handler: &mut MqttMsgHandler) {
+        const ACQ_FILES_OBJECT: &str = "/acqFiles";
+        let set_acq_files_topic = format!("{}{}{}", "+/set/request/", APP_NAME, ACQ_FILES_OBJECT);
+        let get_acq_files_topic = format!("{}{}{}", "+/get/request/", APP_NAME, ACQ_FILES_OBJECT);
+        let get_acq_files_num_topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/acqFilesNum");
+        let del_acq_files_topic = format!("{}{}{}", "+/set/request/", APP_NAME, "delAcqFiles");
+        let clear_acq_files_topic = format!("{}{}{}", "+/set/request/", APP_NAME, "clearAcqFiles");
+
+        let topic_filters = vec![
+            (set_acq_files_topic, MqttTopicType::AddAcqFiles),
+            (get_acq_files_topic, MqttTopicType::GetAcqFiles),
+            (get_acq_files_num_topic, MqttTopicType::GetAcqFilesNum),
+            (del_acq_files_topic, MqttTopicType::DelAcqFiles),
+            (clear_acq_files_topic, MqttTopicType::ClearAcqFiles),
+        ];
+
+        mqtt_msg_handler.add_topic_filters(topic_filters);
+    }
+
+    fn wait_operation_result(&self, mut node_conf: MutexGuard<'_, NodeConfig>) -> Result<()> {
+        node_conf.operation_result = None; // 可去掉
+        let result = self
+            .cond
+            .wait_timeout_while(node_conf, Duration::from_secs(self.timeout), |conf| {
+                conf.operation_result.is_none()
+            })
+            .unwrap();
+        node_conf = result.0;
+        if result.1.timed_out() {
+            node_conf.operation_result = Some(Err(anyhow::anyhow!("timeout")));
+        }
+
+        node_conf.operation_result.take().unwrap()
+    }
+
+    fn uart_node_infos(
+        node_config: &mut node_config::NodeConfig,
+        app: &str,
+        node_infos: &[NodeInfo],
+        is_init: bool,
+    ) -> Result<Vec<app_data::NodeInfo>> {
+        match is_init {
+            true => Ok(node_infos
+                .iter()
+                .map(|node_info| node_info.to_uart_node_info())
+                .collect()),
+            false => node_infos.iter().try_fold(
+                Vec::<app_data::NodeInfo>::new(),
+                |mut uart_node_infos, node_info| {
+                    if !node_config.add_node_info_exist(app, node_info)? {
+                        uart_node_infos.push(node_info.to_uart_node_info())
+                    }
+                    Ok(uart_node_infos)
+                },
+            ),
+        }
+    }
+
+    fn add_chunk_acq_files(
+        &self,
+        app: &str,
+        mut mqtt_req_info: Option<MqttReqInfo>,
+        node_infos: &[NodeInfo],
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) -> Result<usize> {
+        let mut node_config = self.node_conf.lock().unwrap();
+        let uart_node_infos = Self::uart_node_infos(
+            &mut node_config.node_config,
+            app,
+            node_infos,
+            mqtt_req_info.is_none(),
+        )?;
+
+        // 无需uart操作
+        let node_number = uart_node_infos.len();
+        if node_number == 0 {
+            return Ok(0);
+        }
+
+        if let Some(mqtt_req_info) = mqtt_req_info.as_mut() {
+            //debug!("mqtt req info: {:?}", mqtt_req_info);
+            let extra_data = NodeInfoData {
+                //node_infos: node_infos.to_vec(),
+                node_infos: uart_node_infos
+                    .iter()
+                    .map(|uart_node| uart_node.to_node_info())
+                    .collect(),
+            };
+            mqtt_req_info.set_extra_data(Some(Box::new(extra_data)));
+        }
+        let request = AddNodeRequest::new(uart_node_infos);
+        let frame = Frame::new_request(request.into());
+
+        let req_info = ReqInfo::new(&frame, mqtt_req_info);
+        uart_msg_sender.send(UartMessage::new(req_info, frame))?;
+
+        self.wait_operation_result(node_config)
+            .map(|_| node_number)?;
+
+        Ok(node_number)
+    }
+
+    fn add_acq_files(
+        &self,
+        app: &str,
+        message: &MqttMessage,
+        node_infos: Vec<NodeInfo>,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) -> Result<()> {
+        for (index, nodes) in node_infos.chunks(ACQ_FILES_CHUNK_SIZE).enumerate() {
+            match self.add_chunk_acq_files(
+                app,
+                Some(message.to_mqtt_req_info()),
+                nodes,
+                uart_msg_sender,
+            ) {
+                Ok(0) => {
+                    info!(
+                        "node index[{}-{}) already exists, skip",
+                        index,
+                        index + ACQ_FILES_CHUNK_SIZE
+                    );
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    error!("add chunk acq files error: {}", e);
+                    return anyhow::bail!(e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn mqtt_add_acq_files(
+        &self,
+        message: MqttMessage,
+        mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) -> Result<()> {
+        //let node_infos = serde_json::from_str::<Value>(message.payload()).and_then(|v| {
+        //    v.get("body")
+        //        .ok_or_else(|| anyhow::bail!("body not exist"))
+        //        .map(|v| {
+        //            serde_json::from_value::<Vec<NodeInfo>>(v.to_owned()).map_err(|e| e.into())
+        //        })
+        //        .unwrap()
+        //});
+        let node_infos = serde_json::from_str::<Value>(message.payload())
+            .unwrap()
+            .get("body")
+            .ok_or_else(|| anyhow::anyhow!("body not exist"))
+            .map(|v| {
+                serde_json::from_value::<Vec<NodeInfo>>(v.to_owned())
+                    .map_err(|e| anyhow::anyhow!(e))
+            })
+            .unwrap();
+
+        if let Err(e) = node_infos {
+            mqtt_msg_sender.send(MqttMessage::new_with_msg_status_reason(
+                message,
+                "FAILURE",
+                e.to_string(),
+            ))?;
+            //return Err(anyhow::anyhow!("json parse error: {}", e));
+            return anyhow::bail!(e);
+        }
+        // 单次处理ACQ_FILES_CHUNK_SIZE个节点
+        let node_infos = node_infos.unwrap();
+        let app = MqttTopic::try_from(message.topic())
+            .unwrap()
+            .app()
+            .to_owned();
+        let response = match self.add_acq_files(app.as_str(), &message, node_infos, uart_msg_sender)
+        {
+            Ok(_) => MqttMessage::new_with_msg_body(message, None),
+            Err(e) => MqttMessage::new_with_msg_status_reason(message, "FAILURE", e.to_string()),
+        };
+        mqtt_msg_sender.send(response)?;
+
+        Ok(())
+    }
+
+    pub fn uart_add_acq_files(&self, message: UartMessage) -> Result<()> {
+        let response = UartResponse::<ConfirmResponse>::try_from(message.frame)?;
+        let is_init = message.req_info.is_init();
+        let result = match response {
+            UartResponse::Normal(_) => Ok(()),
+            UartResponse::Deny(response) => Err(anyhow::anyhow!("{}", response.error_code())),
+        };
+
+        if is_init || result.is_err() {
+            let mut node_config = self.node_conf.lock().unwrap();
+            node_config.operation_result = Some(result);
+            self.cond.notify_one();
+        } else {
+            let mut mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
+            let topic = MqttTopic::try_from(mqtt_req_info.topic()).unwrap();
+            let extra_data = mqtt_req_info.extra_data().unwrap();
+            let node_infos = extra_data.downcast::<NodeInfoData>().unwrap();
+            let mut node_conf = self.node_conf.lock().unwrap();
+            let result = node_conf
+                .node_config
+                .add_node_infos(topic.info_target(), node_infos.node_infos);
+            node_conf.operation_result = Some(result);
+            self.cond.notify_one();
+        }
+
+        Ok(())
+    }
 }

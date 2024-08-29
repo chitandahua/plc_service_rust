@@ -1,3 +1,4 @@
+use crate::mqtt_message::MqttMessage;
 use crate::protocol::app_data::Afn;
 use crate::protocol::Frame;
 use crate::MqttTopic;
@@ -27,25 +28,21 @@ impl FrameKey {
 
 #[derive(Debug)]
 pub struct MqttReqInfo {
-    topic: MqttTopic,
+    topic: String, // 回复的topic
     token: String,
     extra_data: Option<Box<dyn Any + Send + Sync>>,
 }
 
 impl MqttReqInfo {
-    pub fn new(
-        topic: String,
-        token: String,
-        extra_data: Option<Box<dyn Any + Send + Sync>>,
-    ) -> Self {
+    pub fn new(topic: &str, token: String, extra_data: Option<Box<dyn Any + Send + Sync>>) -> Self {
         MqttReqInfo {
-            topic: MqttTopic::try_from(topic.as_str()).unwrap(),
+            topic: MqttTopic::transfer(topic),
             token,
             extra_data,
         }
     }
 
-    pub fn topic(&self) -> &MqttTopic {
+    pub fn topic(&self) -> &str {
         &self.topic
     }
 
@@ -55,6 +52,10 @@ impl MqttReqInfo {
 
     pub fn extra_data(&mut self) -> Option<Box<dyn Any + Send + Sync>> {
         self.extra_data.take()
+    }
+
+    pub fn set_extra_data(&mut self, extra_data: Option<Box<dyn Any + Send + Sync>>) {
+        self.extra_data = extra_data;
     }
 }
 
@@ -68,9 +69,9 @@ pub struct ReqInfo {
 }
 
 impl ReqInfo {
-    pub fn new(frame: &Frame) -> Self {
+    pub fn new(frame: &Frame, mqtt_req_info: Option<MqttReqInfo>) -> Self {
         ReqInfo {
-            mqtt_req_info: None,
+            mqtt_req_info,
             frame_key: FrameKey(frame.afn().into(), frame.fn_num()),
             seq_num: frame.get_seq(),
         }
@@ -83,7 +84,11 @@ impl ReqInfo {
         extra_data: Option<Box<dyn Any + Send + Sync>>,
     ) -> Self {
         ReqInfo {
-            mqtt_req_info: Some(MqttReqInfo::new(topic.into(), token.into(), extra_data)),
+            mqtt_req_info: Some(MqttReqInfo::new(
+                topic.into().as_str(),
+                token.into(),
+                extra_data,
+            )),
             frame_key: FrameKey(frame.afn().into(), frame.fn_num()),
             seq_num: frame.get_seq(),
         }

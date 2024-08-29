@@ -4,6 +4,8 @@ use std::fmt::{self, Display};
 use crate::protocol::app_data::{Address, Afn};
 use crate::protocol::AppData;
 
+use crate::service;
+
 // AFN 11H
 pub enum RouteSet {
     AddNode = 1,
@@ -16,9 +18,31 @@ pub struct NodeInfo {
     protocol_type: u8,
 }
 
+impl NodeInfo {
+    pub fn new(src_addr: Address, protocol_type: u8) -> Self {
+        Self {
+            src_addr,
+            protocol_type,
+        }
+    }
+
+    pub fn to_node_info(&self) -> service::NodeInfo {
+        service::NodeInfo::new(
+            self.src_addr.to_string(),
+            format!("{:02x}", self.protocol_type),
+        )
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct AddNodeRequest {
     node_infos: Vec<NodeInfo>,
+}
+
+impl AddNodeRequest {
+    pub fn new(node_infos: Vec<NodeInfo>) -> Self {
+        Self { node_infos }
+    }
 }
 
 impl From<AddNodeRequest> for AppData {

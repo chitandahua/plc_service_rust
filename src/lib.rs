@@ -31,7 +31,7 @@ mod uart_agent;
 use uart_agent::{UartAgent, UartHandler};
 
 mod service;
-use service::{MasterAddress, ModuleInfo, ModuleService};
+use service::{MasterAddress, ModuleInfo, ModuleService, NodeManage};
 
 mod uart_handler;
 use uart_handler::UartMsgHandler;
@@ -87,8 +87,10 @@ fn module_init(mqtt_msg_handler: &mut MqttMsgHandler) -> ModuleService {
     ModuleInfo::init(mqtt_msg_handler);
     let master_address = MasterAddress::new("123456789012".to_string());
     master_address.init(mqtt_msg_handler);
+    let node_manage = NodeManage::new(None, 6);
+    node_manage.init(mqtt_msg_handler);
 
-    ModuleService::new(Arc::new(master_address))
+    ModuleService::new(master_address, node_manage)
 }
 
 const APP_VERSION: &str = "ST01.000";

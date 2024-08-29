@@ -1,6 +1,7 @@
 use crate::{Result, APP_NAME};
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
+use tracing::debug;
 
 #[derive(Debug, PartialEq)]
 pub enum MqttTopicOperator {
@@ -100,10 +101,10 @@ impl TryFrom<&str> for MqttTopic {
         let parts: Vec<&str> = value.split('/').collect();
         anyhow::ensure!(parts.len() == 5, TopicError::Topic(value.to_string()));
         // 判断info_target是否为APP_NAME
-        anyhow::ensure!(
-            parts[3] == APP_NAME,
-            TopicError::InfoTarget(parts[3].to_string())
-        );
+        //anyhow::ensure!(
+        //    parts[3] == APP_NAME,
+        //    TopicError::InfoTarget(parts[3].to_string())
+        //);
 
         // 将字符串转换为MqttTopic
         Ok(MqttTopic {
@@ -147,12 +148,16 @@ impl MqttTopic {
         }
     }
 
-    fn app(&self) -> &str {
+    pub fn app(&self) -> &str {
         self.app.as_str()
     }
 
     fn operator(&self) -> &MqttTopicOperator {
         &self.operator
+    }
+
+    pub fn info_target(&self) -> &str {
+        self.info_target.as_str()
     }
 
     fn info_object(&self) -> &str {
@@ -182,6 +187,10 @@ impl MqttTopic {
                 self.info_target, self.operator, self.info_type, self.app, self.info_object
             ),
         }
+    }
+
+    pub fn transfer(topic: &str) -> String {
+        MqttTopic::try_from(topic).unwrap().topic_transfer()
     }
 }
 

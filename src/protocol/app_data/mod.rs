@@ -27,7 +27,7 @@ pub use route_get::{
 };
 
 mod route_set;
-pub use route_set::{AddNodeRequest, DelNodeRequest, RouteSet};
+pub use route_set::{AddNodeRequest, DelNodeRequest, NodeInfo, RouteSet};
 
 pub const ADDR_LEN: usize = 6;
 #[derive(Debug, Clone, PartialEq)]

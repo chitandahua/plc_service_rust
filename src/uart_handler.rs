@@ -46,6 +46,9 @@ impl UartHandler for UartMsgHandler {
                     .master_address
                     .uart_set_address(message, &self.mqtt_msg_sender)?;
             }
+            (Afn::RouteSet, 1) => {
+                self.services.node_manage.uart_add_acq_files(message)?;
+            }
             _ => todo!(),
         }
 

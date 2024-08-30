@@ -45,6 +45,15 @@ impl NodeInfo {
     }
 }
 
+impl From<app_data::NodeDetail> for NodeInfo {
+    fn from(node: app_data::NodeDetail) -> Self {
+        NodeInfo::new(
+            node.src_addr.to_string(),
+            format!("{:02x}", node.comm_protocol_type),
+        )
+    }
+}
+
 struct GlobalNodeConfig {
     global_data: HashMap<String, Weak<NodeInfo>>,
 }
@@ -205,6 +214,11 @@ impl NodeConfig {
         }
 
         Ok(())
+    }
+
+    pub fn clear_all_app(&mut self) {
+        self.node_data.clear();
+        self.global_node_config.global_data.clear();
     }
 
     pub fn get_node_info(&self, app: &str, index: usize) -> Option<Arc<NodeInfo>> {

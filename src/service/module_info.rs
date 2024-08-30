@@ -38,7 +38,7 @@ impl ModuleInfo {
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
-        let frame = Frame::new_request(ModuleInfoRequest.into());
+        let frame = Frame::new_request(ModuleInfoRequest);
         let req_info = ReqInfo::new_with_mqtt(&frame, message.topic(), message.get_token(), None);
         uart_msg_sender
             .send(UartMessage::new(req_info, frame))

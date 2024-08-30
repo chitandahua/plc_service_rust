@@ -72,7 +72,7 @@ impl MasterAddress {
         let address_clone = address.clone();
 
         let request = AddressSetRequest::new(address);
-        let frame = Frame::new_request(request.into());
+        let frame = Frame::new_request(request);
         let req_info = ReqInfo::new_with_mqtt(
             &frame,
             message.topic(),

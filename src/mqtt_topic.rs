@@ -192,6 +192,14 @@ impl MqttTopic {
     pub fn transfer(topic: &str) -> String {
         MqttTopic::try_from(topic).unwrap().topic_transfer()
     }
+
+    pub fn get_app(topic: &str) -> &str {
+        topic.split('/').next().unwrap()
+    }
+
+    pub fn get_info_target(topic: &str) -> &str {
+        topic.split('/').nth(3).unwrap()
+    }
 }
 
 #[cfg(test)]

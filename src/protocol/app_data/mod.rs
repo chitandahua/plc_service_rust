@@ -22,8 +22,8 @@ pub use route_data_forward::{DataForward, MonitorNodeRequest, MonitorNodeRespons
 
 mod route_get;
 pub use route_get::{
-    QueryNodeInfoRequest, QueryNodeInfoResponse, QueryNodeNumberRequest, QueryNodeNumberResponse,
-    RouteQuery,
+    NodeDetail, QueryNodeInfoRequest, QueryNodeInfoResponse, QueryNodeNumberRequest,
+    QueryNodeNumberResponse, RouteQuery,
 };
 
 mod route_set;

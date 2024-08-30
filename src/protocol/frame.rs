@@ -241,8 +241,8 @@ impl Frame {
         self.clone().into()
     }
 
-    pub fn new_request(app_data: AppData) -> Self {
-        Frame::new(false, SEQ.fetch_add(1, Ordering::Relaxed), app_data)
+    pub fn new_request(app_data: impl Into<AppData>) -> Self {
+        Frame::new(false, SEQ.fetch_add(1, Ordering::Relaxed), app_data.into())
     }
 
     pub fn new_response(seq: u8, app_data: AppData) -> Self {

@@ -24,7 +24,7 @@ impl From<QueryNodeNumberRequest> for AppData {
 
 #[derive(Debug, PartialEq)]
 pub struct QueryNodeNumberResponse {
-    node_number: u16,
+    pub node_number: u16,
     max_node_number: u16,
 }
 
@@ -51,6 +51,15 @@ pub struct QueryNodeInfoRequest {
     node_number: u8,
 }
 
+impl QueryNodeInfoRequest {
+    pub fn new(start_seq: u16, node_number: u8) -> Self {
+        Self {
+            start_seq,
+            node_number,
+        }
+    }
+}
+
 impl From<QueryNodeInfoRequest> for AppData {
     fn from(req: QueryNodeInfoRequest) -> Self {
         let mut data = Vec::new();
@@ -62,15 +71,15 @@ impl From<QueryNodeInfoRequest> for AppData {
 
 const NODE_INFO_SIZE: usize = 8;
 #[derive(Debug, PartialEq)]
-pub struct NodeInfo {
-    src_addr: Address,
+pub struct NodeDetail {
+    pub src_addr: Address,
     listen_signal_quality: u8,
     relay_level: u8,
-    comm_protocol_type: u8,
+    pub comm_protocol_type: u8,
     phase: u8,
 }
 
-impl From<&[u8]> for NodeInfo {
+impl From<&[u8]> for NodeDetail {
     fn from(data: &[u8]) -> Self {
         Self {
             src_addr: data[0..6].try_into().unwrap(),
@@ -87,7 +96,13 @@ const NODE_NUMBER_SIZE: usize = 3;
 pub struct QueryNodeInfoResponse {
     total_node_number: u16,
     node_number: u8,
-    node_infos: Vec<NodeInfo>,
+    node_infos: Vec<NodeDetail>,
+}
+
+impl QueryNodeInfoResponse {
+    pub fn into_node_infos(self) -> Vec<NodeDetail> {
+        self.node_infos
+    }
 }
 
 impl TryFrom<AppData> for QueryNodeInfoResponse {
@@ -111,7 +126,7 @@ impl TryFrom<AppData> for QueryNodeInfoResponse {
         let total_node_number = u16::from_le_bytes(data_units[0..2].try_into()?);
         let mut node_infos = Vec::new();
         for i in 0..node_number {
-            node_infos.push(NodeInfo::from(
+            node_infos.push(NodeDetail::from(
                 &data_units[(i * NODE_INFO_SIZE + NODE_NUMBER_SIZE)..],
             ));
         }
@@ -167,7 +182,7 @@ mod tests {
         let response = QueryNodeInfoResponse {
             total_node_number: 0x0001,
             node_number: 0x01,
-            node_infos: vec![NodeInfo {
+            node_infos: vec![NodeDetail {
                 src_addr: Address::new([0x22, 0x22, 0x02, 0x00, 0x50, 0x02]),
                 listen_signal_quality: 0x0f,
                 relay_level: 0x00,

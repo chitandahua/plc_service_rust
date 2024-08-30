@@ -158,35 +158,44 @@ impl MqttMsgHandler {
                     .find(|&topic_filter| topic_filter.filter.matches(topic));
 
                 if let Some(sub_topic) = sub_topic {
-                    let result =
-                        match sub_topic.mqtt_topic_type {
-                            MqttTopicType::GetModuleInfo => {
-                                ModuleInfo::mqtt_get_module_info(message, &uart_msg_sender)
-                            }
-                            MqttTopicType::GetMasterAddress => services
-                                .master_address
-                                .mqtt_get_address(message, &mqtt_msg_sender, &uart_msg_sender),
-                            MqttTopicType::SetMasterAddress => {
-                                MasterAddress::mqtt_set_address(message, &uart_msg_sender)
-                            }
-                            MqttTopicType::AddAcqFiles => services.node_manage.mqtt_add_acq_files(
-                                message,
-                                &mqtt_msg_sender,
-                                &uart_msg_sender,
-                            ),
-                            MqttTopicType::DelAcqFiles => services.node_manage.mqtt_del_acq_files(
-                                message,
-                                &mqtt_msg_sender,
-                                &uart_msg_sender,
-                            ),
-                            MqttTopicType::ClearAcqFiles => services
-                                .node_manage
-                                .mqtt_clear_acq_files(message, &mqtt_msg_sender, &uart_msg_sender),
-                            _ => {
-                                error!("unrecognized topic: {}", topic);
-                                Ok(())
-                            }
-                        };
+                    let result = match sub_topic.mqtt_topic_type {
+                        MqttTopicType::GetModuleInfo => {
+                            ModuleInfo::mqtt_get_module_info(message, &uart_msg_sender)
+                        }
+                        MqttTopicType::GetMasterAddress => services
+                            .master_address
+                            .mqtt_get_address(message, &mqtt_msg_sender, &uart_msg_sender),
+                        MqttTopicType::SetMasterAddress => {
+                            MasterAddress::mqtt_set_address(message, &uart_msg_sender)
+                        }
+                        MqttTopicType::AddAcqFiles => services.node_manage.mqtt_add_acq_files(
+                            message,
+                            &mqtt_msg_sender,
+                            &uart_msg_sender,
+                        ),
+                        MqttTopicType::DelAcqFiles => services.node_manage.mqtt_del_acq_files(
+                            message,
+                            &mqtt_msg_sender,
+                            &uart_msg_sender,
+                        ),
+                        MqttTopicType::ClearAcqFiles => services.node_manage.mqtt_clear_acq_files(
+                            message,
+                            &mqtt_msg_sender,
+                            &uart_msg_sender,
+                        ),
+                        MqttTopicType::GetAcqFiles => services.node_manage.mqtt_get_acq_files(
+                            message,
+                            &mqtt_msg_sender,
+                            &uart_msg_sender,
+                        ),
+                        MqttTopicType::GetAcqFilesNum => services
+                            .node_manage
+                            .mqtt_get_acq_files_number(message, &mqtt_msg_sender, &uart_msg_sender),
+                        _ => {
+                            error!("unrecognized topic: {}", topic);
+                            Ok(())
+                        }
+                    };
 
                     if let Err(e) = result {
                         error!("mqtt msg handler error: {}", e);

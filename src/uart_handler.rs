@@ -52,6 +52,14 @@ impl UartHandler for UartMsgHandler {
             (Afn::RouteSet, 2) => {
                 self.services.node_manage.uart_del_acq_files(message)?;
             }
+            (Afn::RouteGet, 1) => self
+                .services
+                .node_manage
+                .uart_get_acq_files_number(message, &self.mqtt_msg_sender)?,
+            (Afn::RouteGet, 2) => self
+                .services
+                .node_manage
+                .uart_get_acq_files(message, &self.mqtt_msg_sender)?,
             _ => todo!(),
         }
 

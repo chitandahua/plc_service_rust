@@ -5,6 +5,8 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::request_info::MqttReqInfo;
+use crate::request_info::ReqInfo;
+use crate::request_info::UartMessage;
 use crate::MqttTopic;
 use crate::Result;
 use crate::APP_NAME;
@@ -117,6 +119,11 @@ impl MqttMessage {
         Self::new(topic.topic_transfer(), payload)
     }
 
+    pub fn new_with_req_info_body(mqtt_req_info: MqttReqInfo, body: Option<Value>) -> Self {
+        let payload = MqttPayload::new_with_token(mqtt_req_info.token(), body);
+        Self::new(mqtt_req_info.topic(), payload)
+    }
+
     pub fn new_with_msg_status_reason(
         message: MqttMessage,
         status: &'static str,
@@ -130,6 +137,19 @@ impl MqttMessage {
         );
 
         Self::new(topic.topic_transfer(), payload)
+    }
+
+    pub fn new_with_req_info_status_reason(
+        mqtt_req_info: MqttReqInfo,
+        status: &'static str,
+        reason: impl ToString,
+    ) -> Self {
+        let payload = MqttPayload::new_with_token_status_reason(
+            mqtt_req_info.token(),
+            status,
+            reason.to_string(),
+        );
+        Self::new(mqtt_req_info.topic(), payload)
     }
 
     pub fn topic(&self) -> &str {

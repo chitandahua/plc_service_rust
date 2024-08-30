@@ -49,6 +49,9 @@ impl UartHandler for UartMsgHandler {
             (Afn::RouteSet, 1) => {
                 self.services.node_manage.uart_add_acq_files(message)?;
             }
+            (Afn::RouteSet, 2) => {
+                self.services.node_manage.uart_del_acq_files(message)?;
+            }
             _ => todo!(),
         }
 

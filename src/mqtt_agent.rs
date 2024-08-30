@@ -95,6 +95,7 @@ impl MqttClient {
         debug!("mqtt client start");
         let MqttClient { client, qos, rx } = self;
 
+        debug!("subscribe topic: {:?}", handler.subscribe_topics());
         client
             .subscribe_many_same_qos(&handler.subscribe_topics(), qos)
             .context("subscribe topic fail")?;

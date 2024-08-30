@@ -62,6 +62,12 @@ pub struct DelNodeRequest {
     node_addrs: Vec<Address>,
 }
 
+impl DelNodeRequest {
+    pub fn new(node_addrs: Vec<Address>) -> Self {
+        Self { node_addrs }
+    }
+}
+
 impl From<DelNodeRequest> for AppData {
     fn from(request: DelNodeRequest) -> Self {
         let mut data = Vec::new();

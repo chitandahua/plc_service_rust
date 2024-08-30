@@ -13,7 +13,7 @@ use crate::Result;
 enum NodeConfigError {
     #[error("acq addr {0} not found")]
     NotFound(String),
-    #[error("node info type mismatch, expected {0}, got {1}")]
+    #[error("pro type mismatch, expected {0}, got {1}")]
     TypeMismatch(String, String),
 }
 
@@ -38,6 +38,10 @@ impl NodeInfo {
             self.acq_addr.as_str().into(),
             self.pro_type.parse().unwrap(),
         )
+    }
+
+    pub fn acq_addr(&self) -> &str {
+        &self.acq_addr
     }
 }
 
@@ -128,28 +132,69 @@ impl NodeConfig {
         Ok(true)
     }
 
+    pub fn add_node_info_checked(&mut self, app: &str, node: NodeInfo) {
+        debug!("add node {} for app {}", &node.acq_addr, app);
+        let node = Arc::new(node);
+        self.global_node_config.add_node_info(&node);
+        self.node_data.get_mut(app).unwrap().push(node);
+    }
+
     pub fn add_node_info(&mut self, app: &str, node: NodeInfo) -> Result<()> {
         if false == self.add_node_info_exist(app, &node)? {
-            debug!("add node {} for app {}", &node.acq_addr, app);
-            let node = Arc::new(node);
-            self.global_node_config.add_node_info(&node);
-            self.node_data.get_mut(app).unwrap().push(node);
+            self.add_node_info_checked(app, node);
         }
 
         Ok(())
     }
 
-    pub fn remove_node_info(&mut self, app: &str, node: &NodeInfo) -> Result<()> {
-        if let Some(app_data) = self.node_data.get_mut(app) {
-            if let Some(pos) = app_data.iter().position(|n| n.acq_addr == node.acq_addr) {
-                app_data.remove(pos);
-                self.global_node_config.remove_node_info(node)
-            } else {
-                anyhow::bail!(NodeConfigError::NotFound(node.acq_addr.clone()))
-            }
+    pub fn should_remove_node_info(&mut self, app: &str, node: &NodeInfo) -> bool {
+        let app_data = match self.node_data.get_mut(app) {
+            Some(data) => data,
+            None => return false,
+        };
+
+        let pos = match app_data.iter().position(|n| n.acq_addr == node.acq_addr) {
+            Some(p) => p,
+            None => return false,
+        };
+
+        debug!(
+            "Attempting to remove node {} for app {}",
+            &node.acq_addr, app
+        );
+
+        let count = Arc::strong_count(&app_data[pos]);
+        if count == 1 {
+            // 只有自己引用
+            true
         } else {
-            anyhow::bail!(NodeConfigError::NotFound(node.acq_addr.clone()))
+            // 如果还有其他引用，只从当前 app_data 中移除
+            debug!(
+                "Node {} still exists in other app(s), just removing from current app",
+                &node.acq_addr
+            );
+            app_data.remove(pos);
+            false
         }
+    }
+
+    pub fn remove_node_info_checked(&mut self, app: &str, node: &NodeInfo) -> Result<()> {
+        let app_data = self.node_data.get_mut(app).unwrap();
+        let pos = app_data
+            .iter()
+            .position(|n| n.acq_addr == node.acq_addr)
+            .unwrap();
+        app_data.remove(pos);
+        debug!("Removing node {} from global config", &node.acq_addr);
+        self.global_node_config.remove_node_info(node)
+    }
+
+    pub fn remove_node_info(&mut self, app: &str, node: &NodeInfo) -> Result<()> {
+        if self.should_remove_node_info(app, node) {
+            self.remove_node_info_checked(app, node)?;
+        }
+
+        Ok(())
     }
 
     pub fn clear_app(&mut self, app: &str) -> Result<()> {
@@ -209,9 +254,22 @@ impl NodeConfig {
         Ok(())
     }
 
+    pub fn add_node_infos_checked(&mut self, app: &str, nodes: Vec<NodeInfo>) {
+        for node in nodes {
+            self.add_node_info_checked(app, node);
+        }
+    }
+
     pub fn remove_node_infos(&mut self, app: &str, nodes: &[NodeInfo]) -> Result<()> {
         for node in nodes {
             self.remove_node_info(app, node)?;
+        }
+        Ok(())
+    }
+
+    pub fn remove_node_infos_checked(&mut self, app: &str, nodes: &[NodeInfo]) -> Result<()> {
+        for node in nodes {
+            self.remove_node_info_checked(app, node)?;
         }
         Ok(())
     }

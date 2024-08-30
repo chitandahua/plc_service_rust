@@ -165,7 +165,7 @@ impl NodeManage {
                     info!(
                         "node index[{}-{}) already exists, skip",
                         index,
-                        index + ACQ_FILES_CHUNK_SIZE
+                        index + nodes.len()
                     );
                 }
                 Ok(_) => {}
@@ -185,35 +185,29 @@ impl NodeManage {
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
-        //let node_infos = serde_json::from_str::<Value>(message.payload()).and_then(|v| {
-        //    v.get("body")
-        //        .ok_or_else(|| anyhow::bail!("body not exist"))
-        //        .map(|v| {
-        //            serde_json::from_value::<Vec<NodeInfo>>(v.to_owned()).map_err(|e| e.into())
-        //        })
-        //        .unwrap()
-        //});
         let node_infos = serde_json::from_str::<Value>(message.payload())
-            .unwrap()
-            .get("body")
-            .ok_or_else(|| anyhow::anyhow!("body not exist"))
-            .map(|v| {
-                serde_json::from_value::<Vec<NodeInfo>>(v.to_owned())
-                    .map_err(|e| anyhow::anyhow!(e))
-            })
-            .unwrap();
+            .map_err(anyhow::Error::from)
+            .and_then(|v| {
+                v.get("body")
+                    .ok_or_else(|| anyhow::anyhow!("body not exist"))
+                    .map(|body_value| {
+                        serde_json::from_value::<Vec<NodeInfo>>(body_value.clone())
+                            .map_err(anyhow::Error::from)
+                    })
+            });
+        let node_infos = match node_infos {
+            Err(e) | Ok(Err(e)) => {
+                mqtt_msg_sender.send(MqttMessage::new_with_msg_status_reason(
+                    message,
+                    "FAILURE",
+                    e.to_string(),
+                ))?;
+                return anyhow::bail!(e);
+            }
+            Ok(Ok(node_infos)) => node_infos,
+        };
 
-        if let Err(e) = node_infos {
-            mqtt_msg_sender.send(MqttMessage::new_with_msg_status_reason(
-                message,
-                "FAILURE",
-                e.to_string(),
-            ))?;
-            //return Err(anyhow::anyhow!("json parse error: {}", e));
-            return anyhow::bail!(e);
-        }
         // 单次处理ACQ_FILES_CHUNK_SIZE个节点
-        let node_infos = node_infos.unwrap();
         let app = MqttTopic::try_from(message.topic())
             .unwrap()
             .app()

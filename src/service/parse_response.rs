@@ -18,10 +18,12 @@ where
 {
     type Error = crate::Error;
     fn try_from(frame: Frame) -> Result<Self> {
-        if let Ok(response) = T::try_from(frame.clone().into_app_data()) {
+        if frame.is_deny() {
+            Ok(UartResponse::Deny(DenyResponse::try_from(
+                frame.into_app_data(),
+            )?))
+        } else if let Ok(response) = T::try_from(frame.into_app_data()) {
             Ok(UartResponse::Normal(response))
-        } else if let Ok(response) = DenyResponse::try_from(frame.into_app_data()) {
-            Ok(UartResponse::Deny(response))
         } else {
             anyhow::bail!("invalid response frame")
         }

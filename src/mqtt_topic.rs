@@ -100,11 +100,11 @@ impl TryFrom<&str> for MqttTopic {
         // 将字符串转换为MqttTopic
         let parts: Vec<&str> = value.split('/').collect();
         anyhow::ensure!(parts.len() == 5, TopicError::Topic(value.to_string()));
-        // 判断info_target是否为APP_NAME
-        //anyhow::ensure!(
-        //    parts[3] == APP_NAME,
-        //    TopicError::InfoTarget(parts[3].to_string())
-        //);
+        // 判断info_target/app是否为APP_NAME
+        anyhow::ensure!(
+            parts[3] == APP_NAME || parts[0] == APP_NAME,
+            TopicError::InfoTarget(format!("{}|{}", parts[3], parts[0]))
+        );
 
         // 将字符串转换为MqttTopic
         Ok(MqttTopic {
@@ -133,18 +133,18 @@ impl Display for MqttTopic {
 #[allow(dead_code)]
 impl MqttTopic {
     fn _new(
-        app: impl Into<String>,
+        app: impl ToString,
         operator: MqttTopicOperator,
         info_type: MqttTopicInfoType,
-        info_target: impl Into<String>,
-        info_object: impl Into<String>,
+        info_target: impl ToString,
+        info_object: impl ToString,
     ) -> Self {
         Self {
-            app: app.into(),
+            app: app.to_string(),
             operator,
             info_type,
-            info_target: info_target.into(),
-            info_object: info_object.into(),
+            info_target: info_target.to_string(),
+            info_object: info_object.to_string(),
         }
     }
 

@@ -79,14 +79,14 @@ impl ReqInfo {
 
     pub fn new_with_mqtt(
         frame: &Frame,
-        topic: impl Into<String>,
-        token: impl Into<String>,
+        topic: impl AsRef<str>,
+        token: impl ToString,
         extra_data: Option<Box<dyn Any + Send + Sync>>,
     ) -> Self {
         ReqInfo {
             mqtt_req_info: Some(MqttReqInfo::new(
-                topic.into().as_str(),
-                token.into(),
+                topic.as_ref(),
+                token.to_string(),
                 extra_data,
             )),
             frame_key: FrameKey(frame.afn().into(), frame.fn_num()),

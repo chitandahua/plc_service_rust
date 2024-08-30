@@ -149,10 +149,9 @@ impl MqttClient {
         }
     }
 
-    pub fn _subscribe(&self, topic: impl Into<String>) -> Result<()> {
-        let topic = topic.into();
-        debug!("subuscribe topic: {}", topic);
-        self.client.subscribe(topic.as_str(), self.qos)?;
+    pub fn _subscribe(&self, topic: impl AsRef<str>) -> Result<()> {
+        debug!("subuscribe topic: {}", topic.as_ref());
+        self.client.subscribe(topic.as_ref(), self.qos)?;
         Ok(())
     }
 

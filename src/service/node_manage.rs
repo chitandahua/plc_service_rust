@@ -15,6 +15,7 @@ use crate::protocol::app_data::{
 };
 use crate::protocol::Frame;
 use crate::request_info::MqttReqInfo;
+use crate::service::parse_response::uart_response_handler;
 use crate::service::UartResponse;
 use crate::UartMessage;
 use crate::{MqttMsgHandler, ReqInfo, Result, APP_NAME};
@@ -457,7 +458,7 @@ struct NodeNumberRequest {
 }
 
 #[derive(Debug, Serialize)]
-struct NodeNumerResponse {
+pub struct NodeNumerResponse {
     #[serde(rename = "acqNum")]
     acq_num: String,
 }
@@ -495,13 +496,14 @@ impl NodeManage {
 
             uart_msg_sender.send(UartMessage::new(req_info, frame))?;
         } else {
-            let node_infos = {
+            let body = {
                 let mut node_config = self.node_conf.lock().unwrap();
-                node_config
-                    .node_config
-                    .get_node_infos(app, start_index, cur_meter_num)
+                let node_infos =
+                    node_config
+                        .node_config
+                        .get_node_infos(app, start_index, cur_meter_num);
+                serde_json::to_value(node_infos)?
             };
-            let body = serde_json::to_value(node_infos)?;
             mqtt_msg_sender.send(MqttMessage::new_with_msg_body(message, Some(body)))?;
         }
 
@@ -513,29 +515,7 @@ impl NodeManage {
         message: UartMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        let response = UartResponse::<QueryNodeInfoResponse>::try_from(message.frame)?;
-        let mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
-        let response_msg = match response {
-            UartResponse::Normal(response) => {
-                let node_infos: Vec<NodeInfo> = response
-                    .into_node_infos()
-                    .into_iter()
-                    .map(|n| n.into())
-                    .collect();
-                MqttMessage::new_with_req_info_body(
-                    mqtt_req_info,
-                    Some(serde_json::to_value(&node_infos).unwrap()),
-                )
-            }
-            UartResponse::Deny(response) => MqttMessage::new_with_req_info_status_reason(
-                mqtt_req_info,
-                "FAILURE",
-                response.error_code(),
-            ),
-        };
-        mqtt_msg_sender.send(response_msg)?;
-
-        Ok(())
+        uart_response_handler::<QueryNodeInfoResponse>(message, mqtt_msg_sender)
     }
 
     pub fn mqtt_get_acq_files_number(
@@ -575,21 +555,6 @@ impl NodeManage {
         message: UartMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        let response = UartResponse::<QueryNodeNumberResponse>::try_from(message.frame)?;
-        let mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
-        let response_msg = match response {
-            UartResponse::Normal(response) => MqttMessage::new_with_req_info_body(
-                mqtt_req_info,
-                Some(serde_json::to_value(NodeNumerResponse::from(response)).unwrap()),
-            ),
-            UartResponse::Deny(response) => MqttMessage::new_with_req_info_status_reason(
-                mqtt_req_info,
-                "FAILURE",
-                response.error_code(),
-            ),
-        };
-        mqtt_msg_sender.send(response_msg)?;
-
-        Ok(())
+        uart_response_handler::<QueryNodeNumberResponse>(message, mqtt_msg_sender)
     }
 }

@@ -6,6 +6,7 @@ use tracing::{error, info};
 use crate::mqtt_handler::MqttTopicType;
 use crate::protocol::app_data::{AddressSetRequest, ConfirmResponse};
 use crate::protocol::Frame;
+use crate::request_info;
 use crate::{
     mqtt_message::{MqttMessage, MqttPayload},
     mqtt_topic::MqttTopic,
@@ -78,6 +79,7 @@ impl MasterAddress {
             message.topic(),
             payload["token"].as_str().unwrap(),
             Some(Box::new(address_clone)),
+            Some(Arc::new(request_info::timeout_handler)),
         );
         uart_msg_sender.send(UartMessage::new(req_info, frame))?;
 

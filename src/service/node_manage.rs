@@ -14,7 +14,7 @@ use crate::protocol::app_data::{
     QueryNodeInfoRequest, QueryNodeInfoResponse, QueryNodeNumberRequest, QueryNodeNumberResponse,
 };
 use crate::protocol::Frame;
-use crate::request_info::MqttReqInfo;
+use crate::request_info::{self, MqttReqInfo};
 use crate::service::parse_response::uart_response_mqtt_handler;
 use crate::service::UartResponse;
 use crate::UartMessage;
@@ -284,7 +284,7 @@ impl NodeManage {
         let result = self.operate_acq_files::<T>(app, &message, node_infos, uart_msg_sender);
         let response = match result {
             Ok(_) => MqttMessage::new_with_msg_body(message, None),
-            Err(e) => MqttMessage::new_with_msg_status_reason(message, "FAILURE", e.to_string()),
+            Err(e) => MqttMessage::new_with_msg_status_reason(message, "FAILURE", e),
         };
         mqtt_msg_sender.send(response)?;
 
@@ -320,7 +320,7 @@ impl NodeManage {
         }
         let frame = Frame::new_request(T::create_uart_request(node_infos));
 
-        let req_info = ReqInfo::new(&frame, mqtt_req_info);
+        let req_info = ReqInfo::new(&frame, mqtt_req_info, None);
         uart_msg_sender.send(UartMessage::new(req_info, frame))?;
 
         self.wait_operation_result(node_config)
@@ -431,7 +431,7 @@ impl NodeManage {
     // 仅初始化时调用
     pub fn _clear_acq_files(&self, uart_msg_sender: &mpsc::Sender<UartMessage>) -> Result<()> {
         let frame = Frame::new_request(InitRequest::new(InitOperation::Params));
-        let req_info = ReqInfo::new(&frame, None);
+        let req_info = ReqInfo::new(&frame, None, None);
 
         let node_config = self.node_conf.lock().unwrap();
         uart_msg_sender.send(UartMessage::new(req_info, frame))?;
@@ -492,7 +492,11 @@ impl NodeManage {
                 start_index as u16,
                 cur_meter_num as u8,
             ));
-            let req_info = ReqInfo::new(&frame, Some(message.to_mqtt_req_info()));
+            let req_info = ReqInfo::new(
+                &frame,
+                Some(message.to_mqtt_req_info()),
+                Some(Arc::new(request_info::timeout_handler)),
+            );
 
             uart_msg_sender.send(UartMessage::new(req_info, frame))?;
         } else {
@@ -533,7 +537,11 @@ impl NodeManage {
             .unwrap_or(false)
         {
             let frame = Frame::new_request(QueryNodeNumberRequest);
-            let req_info = ReqInfo::new(&frame, Some(message.to_mqtt_req_info()));
+            let req_info = ReqInfo::new(
+                &frame,
+                Some(message.to_mqtt_req_info()),
+                Some(Arc::new(request_info::timeout_handler)),
+            );
 
             uart_msg_sender.send(UartMessage::new(req_info, frame))?;
         } else {

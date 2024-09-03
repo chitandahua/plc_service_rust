@@ -32,6 +32,7 @@ hex = "0"
 num_enum = "0"
 strum = "0.26"
 strum_macros = "0.26"
+timer = "0"
 
 [build-dependencies]
 vergen = { version = "7.4.2", default-features = false, features = [

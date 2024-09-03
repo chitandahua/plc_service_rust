@@ -3,6 +3,7 @@ use std::{
     path::PathBuf,
     sync::{mpsc, Arc},
 };
+use timer::Timer;
 
 mod cli;
 pub use cli::Args;
@@ -52,6 +53,7 @@ pub fn run(args: Args) -> Result<()> {
 
     // mqtt
     let (uart_msg_sender, uart_msg_receiver) = mpsc::channel();
+    let (concurrent_msg_sender, concurrent_msg_receiver) = mpsc::channel();
     let (sender, receiver) = mpsc::channel();
     let (msg_sender, msg_receiver) = mpsc::channel();
 
@@ -62,17 +64,22 @@ pub fn run(args: Args) -> Result<()> {
     // uart
     let uart_handler =
         UartMsgHandler::new(sender.clone(), uart_msg_sender.clone(), services.clone());
-    let uart_agent = UartAgent::new(uart_msg_receiver);
+    let sock_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 34567);
+    let uart_agent = UartAgent::new(
+        sender.clone(),
+        uart_msg_receiver,
+        concurrent_msg_receiver,
+        PathBuf::from(UART_CONFIG_PATH),
+        Some(sock_addr),
+    )?;
 
     let handler = Handler::new(msg_sender, mqtt_msg_handler.subscribe_topics());
 
+    // timer
+    let timer = Arc::new(Timer::new());
+
     let mut join_handler = mqtt_client.run(handler, receiver)?;
-    let sock_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 34567);
-    join_handler.extend(uart_agent.run(
-        PathBuf::from(UART_CONFIG_PATH),
-        Some(sock_addr),
-        uart_handler,
-    )?);
+    join_handler.extend(uart_agent.run(uart_handler, timer.clone())?);
     join_handler.extend(mqtt_msg_handler.run(services)?);
 
     for handler in join_handler {

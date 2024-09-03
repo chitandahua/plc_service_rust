@@ -1,11 +1,11 @@
 use serde::Serialize;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::MqttPayload;
 use crate::protocol::app_data::{self, AppData, ModuleInfoRequest};
 use crate::protocol::Frame;
-use crate::request_info::UartMessage;
+use crate::request_info::{self, UartMessage};
 use crate::uart_handler::UartMsgHandler;
 use crate::APP_NAME;
 use crate::{MqttMessage, MqttMsgHandler, ReqInfo, Result};
@@ -39,7 +39,13 @@ impl ModuleInfo {
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
         let frame = Frame::new_request(ModuleInfoRequest);
-        let req_info = ReqInfo::new_with_mqtt(&frame, message.topic(), message.get_token(), None);
+        let req_info = ReqInfo::new_with_mqtt(
+            &frame,
+            message.topic(),
+            message.get_token(),
+            None,
+            Some(Arc::new(request_info::timeout_handler)),
+        );
         uart_msg_sender
             .send(UartMessage::new(req_info, frame))
             .unwrap();

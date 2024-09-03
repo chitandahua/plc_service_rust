@@ -1179,6 +1179,7 @@ dependencies = [
  "syslog-tracing",
  "thiserror",
  "time",
+ "timer",
  "tracing",
  "tracing-subscriber",
  "vergen",
@@ -1590,6 +1591,15 @@ checksum = "3f252a68540fde3a3877aeea552b832b40ab9a69e318efd078774a01ddee1ccf"
 dependencies = [
  "num-conv",
  "time-core",
+]
+
+[[package]]
+name = "timer"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31d42176308937165701f50638db1c31586f183f1aab416268216577aec7306b"
+dependencies = [
+ "chrono",
 ]
 
 [[package]]

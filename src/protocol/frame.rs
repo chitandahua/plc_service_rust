@@ -245,8 +245,8 @@ impl Frame {
         Frame::new(false, SEQ.fetch_add(1, Ordering::Relaxed), app_data.into())
     }
 
-    pub fn new_response(seq: u8, app_data: AppData) -> Self {
-        Frame::new(true, seq, app_data)
+    pub fn new_response(seq: u8, app_data: impl Into<AppData>) -> Self {
+        Frame::new(true, seq, app_data.into())
     }
 
     pub fn into_app_data(self) -> AppData {

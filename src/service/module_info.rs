@@ -54,7 +54,7 @@ impl ModuleInfo {
 }
 
 #[derive(Debug, Serialize)]
-struct ModuleInfoResponse {
+pub(crate) struct ModuleInfoResponse {
     #[serde(rename = "communicationMode")]
     communication_mode: String,
     #[serde(rename = "slaveMonitorOvertime")]

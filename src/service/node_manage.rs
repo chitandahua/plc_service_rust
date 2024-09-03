@@ -15,7 +15,7 @@ use crate::protocol::app_data::{
 };
 use crate::protocol::Frame;
 use crate::request_info::MqttReqInfo;
-use crate::service::parse_response::uart_response_handler;
+use crate::service::parse_response::uart_response_mqtt_handler;
 use crate::service::UartResponse;
 use crate::UartMessage;
 use crate::{MqttMsgHandler, ReqInfo, Result, APP_NAME};
@@ -515,7 +515,7 @@ impl NodeManage {
         message: UartMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_handler::<QueryNodeInfoResponse>(message, mqtt_msg_sender)
+        uart_response_mqtt_handler::<QueryNodeInfoResponse>(message, mqtt_msg_sender)
     }
 
     pub fn mqtt_get_acq_files_number(
@@ -555,6 +555,6 @@ impl NodeManage {
         message: UartMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_handler::<QueryNodeNumberResponse>(message, mqtt_msg_sender)
+        uart_response_mqtt_handler::<QueryNodeNumberResponse>(message, mqtt_msg_sender)
     }
 }

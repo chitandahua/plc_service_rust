@@ -21,6 +21,15 @@ pub struct ConfirmResponse {
     wait_time: u16,
 }
 
+impl Default for ConfirmResponse {
+    fn default() -> Self {
+        Self {
+            channel_status: 0,
+            wait_time: 6,
+        }
+    }
+}
+
 impl TryFrom<AppData> for ConfirmResponse {
     type Error = crate::Error;
     fn try_from(app_data: AppData) -> Result<Self> {

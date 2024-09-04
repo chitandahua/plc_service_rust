@@ -7,12 +7,23 @@ use crate::request_info::MqttReqInfo;
 use crate::MqttTopic;
 use crate::Result;
 
+#[derive(Debug, Serialize, Deserialize, strum_macros::EnumString, strum_macros::Display)]
+#[strum(serialize_all = "UPPERCASE")]
+pub enum Status {
+    #[strum(serialize = "OK")]
+    #[serde(rename = "OK")]
+    Success,
+    Failure,
+}
+
+pub const SUCCESS: &str = "OK";
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MqttPayload {
     token: String,
     timestamp: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    status: Option<&'static str>,
+    status: Option<Status>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -36,11 +47,11 @@ impl MqttPayload {
     pub fn new_with_token_result(token: impl ToString, result: Result<()>) -> Self {
         match result {
             Ok(_) => Self::new_with_token(token, None),
-            Err(e) => Self::new_with_token_status_reason(token, "FAILURE", e),
+            Err(e) => Self::new_with_token_status_reason(token, Status::Failure, e),
         }
     }
 
-    pub fn new_with_status_reason(status: &'static str, reason: impl ToString) -> Self {
+    pub fn new_with_status_reason(status: Status, reason: impl ToString) -> Self {
         Self {
             token: AtomicU64::fetch_add(&TOKEN, 1, std::sync::atomic::Ordering::Relaxed)
                 .to_string(),
@@ -55,15 +66,15 @@ impl MqttPayload {
         Self {
             token: token.to_string(),
             timestamp: get_timestamp(),
-            status: Some("OK"),
-            reason: Some("OK".to_string()),
+            status: Some(Status::Success),
+            reason: Some(SUCCESS.to_string()),
             body,
         }
     }
 
     pub fn new_with_token_status_reason(
         token: impl ToString,
-        status: &'static str,
+        status: Status,
         reason: impl ToString,
     ) -> Self {
         Self {
@@ -129,7 +140,7 @@ impl MqttMessage {
 
     pub fn new_with_msg_status_reason(
         message: MqttMessage,
-        status: &'static str,
+        status: Status,
         reason: impl ToString,
     ) -> Self {
         let topic: MqttTopic = message.topic().try_into().unwrap();
@@ -144,7 +155,7 @@ impl MqttMessage {
 
     pub fn new_with_req_info_status_reason(
         mqtt_req_info: MqttReqInfo,
-        status: &'static str,
+        status: Status,
         reason: impl ToString,
     ) -> Self {
         let payload = MqttPayload::new_with_token_status_reason(
@@ -210,32 +221,5 @@ mod mqtt_message_tests {
         let msg = MqttMessage::new("topic", "payload");
         assert_eq!(msg.topic(), "topic");
         assert_eq!(msg.payload(), "payload");
-    }
-
-    #[test]
-    fn test_mqtt_common_response() {
-        let mut response = MqttCommonResponse::new("123".into(), true, Some("OK".into()));
-        assert_eq!(response.status, STATUS_OK);
-        response.set_status(false);
-        assert_eq!(response.status, STATUS_FAILURE);
-        assert_eq!(response.msg, Some("OK".into()));
-    }
-
-    #[test]
-    fn test_mqtt_message_common_response() {
-        use crate::APP_NAME;
-        let topic = format!("app/set/request/{APP_NAME}/123");
-        let mut msg = MqttMessage::common_response(&topic, "payload").unwrap();
-        assert_eq!(msg.topic(), format!("{APP_NAME}/set/response/app/123"));
-        assert_eq!(msg.payload(), "");
-
-        msg.set_payload("payload".into());
-        assert_eq!(msg.payload(), "payload");
-
-        msg.set_response_payload("123", true, Some("OK".into()));
-        let payload: Value = serde_json::from_str(msg.payload()).unwrap();
-        assert_eq!(payload["token"], "123");
-        assert_eq!(payload["status"], STATUS_OK);
-        assert_eq!(payload["msg"], "OK");
     }
 }

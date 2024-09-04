@@ -1,4 +1,4 @@
-use crate::mqtt_message::MqttMessage;
+use crate::mqtt_message::{MqttMessage, Status};
 use crate::protocol::app_data::Afn;
 use crate::protocol::Frame;
 use crate::{MqttPayload, MqttTopic};
@@ -143,7 +143,7 @@ impl UartMessage {
 pub fn timeout_handler(mqtt_req_info: MqttReqInfo, mqtt_msg_sender: mpsc::Sender<MqttMessage>) {
     let payload = MqttPayload::new_with_token_status_reason(
         mqtt_req_info.token(),
-        "FAILURE",
+        Status::Failure,
         "request timeout",
     );
     mqtt_msg_sender

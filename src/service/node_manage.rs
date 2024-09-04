@@ -7,7 +7,7 @@ use std::time::Duration;
 use tracing::{error, info};
 
 use crate::mqtt_handler::MqttTopicType;
-use crate::mqtt_message::MqttMessage;
+use crate::mqtt_message::{MqttMessage, Status};
 use crate::mqtt_topic::MqttTopic;
 use crate::protocol::app_data::{
     self, AddNodeRequest, Address, ConfirmResponse, DelNodeRequest, InitOperation, InitRequest,
@@ -271,7 +271,7 @@ impl NodeManage {
             Err(e) => {
                 mqtt_msg_sender.send(MqttMessage::new_with_msg_status_reason(
                     message,
-                    "FAILURE",
+                    Status::Failure,
                     e.to_string(),
                 ))?;
                 return Err(e);
@@ -283,7 +283,7 @@ impl NodeManage {
         let result = self.operate_acq_files::<T>(app, &message, node_infos, uart_msg_sender);
         let response = match result {
             Ok(_) => MqttMessage::new_with_msg_body(message, None),
-            Err(e) => MqttMessage::new_with_msg_status_reason(message, "FAILURE", e),
+            Err(e) => MqttMessage::new_with_msg_status_reason(message, Status::Failure, e),
         };
         mqtt_msg_sender.send(response)?;
 

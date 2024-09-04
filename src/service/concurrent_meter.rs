@@ -8,7 +8,7 @@ use thiserror::Error;
 use timer::{Guard, Timer};
 
 use crate::mqtt_handler::MqttTopicType;
-use crate::mqtt_message::MqttPayload;
+use crate::mqtt_message::{MqttPayload, Status};
 use crate::mqtt_topic::MqttTopic;
 use crate::protocol::app_data::{Address, ConcurrentReadMeterRequest, ConcurrentReadMeterResponse};
 use crate::protocol::{AddressField, Frame};
@@ -99,7 +99,7 @@ impl IntoMqttMessage for ConcurrentReadMeterResponse {
         match extra_data.data.is_empty() {
             true => MqttMessage::new_with_req_info_status_reason(
                 mqtt_req_info,
-                "FAILURE",
+                Status::Failure,
                 "Meter reading failed. Cco response data empty",
             ),
             false => MqttMessage::new_with_req_info_body(
@@ -150,7 +150,7 @@ impl ConcurrentMeter {
         // TODO
         let payload = MqttPayload::new_with_token_status_reason(
             mqtt_req_info.token(),
-            "FAILURE",
+            Status::Failure,
             "request timeout",
         );
         mqtt_msg_sender

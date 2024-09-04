@@ -12,6 +12,7 @@ use crate::ModuleInfo;
 pub struct UartMsgHandler {
     mqtt_msg_sender: mpsc::Sender<MqttMessage>,
     uart_msg_sender: mpsc::Sender<UartMessage>,
+    concurrent_msg_sender: mpsc::Sender<UartMessage>,
     services: ModuleService,
 }
 
@@ -19,11 +20,13 @@ impl UartMsgHandler {
     pub fn new(
         mqtt_msg_sender: mpsc::Sender<MqttMessage>,
         uart_msg_sender: mpsc::Sender<UartMessage>,
+        concurrent_msg_sender: mpsc::Sender<UartMessage>,
         services: ModuleService,
     ) -> Self {
         Self {
             mqtt_msg_sender,
             uart_msg_sender,
+            concurrent_msg_sender,
             services,
         }
     }
@@ -60,6 +63,15 @@ impl UartHandler for UartMsgHandler {
                 .services
                 .node_manage
                 .uart_get_acq_files(message, &self.mqtt_msg_sender)?,
+            (Afn::CocurrentReadMeter, 1) => {
+                let master_address = self.services.master_address.get_master_address();
+                self.services.concurrent_meter.uart_meter_reading(
+                    message,
+                    master_address,
+                    &self.mqtt_msg_sender,
+                    &self.concurrent_msg_sender,
+                )?;
+            }
             _ => todo!(),
         }
 

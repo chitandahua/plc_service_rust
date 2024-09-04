@@ -51,7 +51,11 @@ impl MqttReqInfo {
         &self.token
     }
 
-    pub fn extra_data(&mut self) -> Option<Box<dyn Any + Send + Sync>> {
+    pub fn extra_data(&self) -> Option<&Box<dyn Any + Send + Sync>> {
+        self.extra_data.as_ref()
+    }
+
+    pub fn get_extra_data(&mut self) -> Option<Box<dyn Any + Send + Sync>> {
         self.extra_data.take()
     }
 
@@ -118,6 +122,10 @@ impl ReqInfo {
 
     pub fn seq_num(&self) -> u8 {
         self.seq_num
+    }
+
+    pub fn mqtt_req_info(&self) -> Option<&MqttReqInfo> {
+        self.mqtt_req_info.as_ref()
     }
 }
 

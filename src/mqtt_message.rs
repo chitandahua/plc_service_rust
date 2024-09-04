@@ -37,6 +37,13 @@ impl MqttPayload {
         }
     }
 
+    pub fn new_with_token_result(token: impl ToString, result: Result<()>) -> Self {
+        match result {
+            Ok(_) => Self::new_with_token(token, None),
+            Err(e) => Self::new_with_token_status_reason(token, "FAILURE", e),
+        }
+    }
+
     pub fn new_with_status_reason(status: &'static str, reason: impl ToString) -> Self {
         Self {
             token: AtomicU64::fetch_add(&TOKEN, 1, std::sync::atomic::Ordering::Relaxed)

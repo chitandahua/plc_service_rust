@@ -1,3 +1,6 @@
+mod concurrent_meter;
+pub use concurrent_meter::ConcurrentMeter;
+
 mod device_info;
 pub use device_info::DeviceInfo;
 
@@ -22,13 +25,19 @@ use std::sync::Arc;
 pub struct ModuleService {
     pub master_address: Arc<MasterAddress>,
     pub node_manage: Arc<NodeManage>,
+    pub concurrent_meter: ConcurrentMeter,
 }
 
 impl ModuleService {
-    pub fn new(master_address: MasterAddress, node_manage: NodeManage) -> Self {
+    pub fn new(
+        master_address: MasterAddress,
+        node_manage: NodeManage,
+        concurrent_meter: ConcurrentMeter,
+    ) -> Self {
         Self {
             master_address: Arc::new(master_address),
             node_manage: Arc::new(node_manage),
+            concurrent_meter,
         }
     }
 }

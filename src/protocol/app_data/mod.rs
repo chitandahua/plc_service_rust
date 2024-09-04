@@ -14,11 +14,14 @@ pub use ctrl_cmd::{AddressSetRequest, CtrlCmd};
 mod init;
 pub use init::{InitOperation, InitRequest};
 
+mod meter_reading;
+pub use meter_reading::{ConcurrentReadMeterRequest, ConcurrentReadMeterResponse, MeterReading};
+
 mod query_data;
 pub use query_data::{ModuleInfoRequest, ModuleInfoResponse};
 
-mod route_data_forward;
-pub use route_data_forward::{DataForward, MonitorNodeRequest, MonitorNodeResponse};
+//mod route_data_forward;
+//pub use route_data_forward::{DataForward, MonitorNodeRequest, MonitorNodeResponse};
 
 mod route_get;
 pub use route_get::{
@@ -177,7 +180,7 @@ impl AppData {
             | Afn::CtrlCmd
             | Afn::RouteGet
             | Afn::RouteSet => 0,
-            Afn::DataForward | Afn::RouteDataForward => 1,
+            Afn::DataForward | Afn::RouteDataForward | Afn::CocurrentReadMeter => 1,
             _ => 0,
         }
     }

@@ -42,16 +42,18 @@ impl MasterAddress {
         }
     }
 
+    pub fn get_master_address(&self) -> Address {
+        let address = self.node_addr.address.lock().unwrap();
+        address.to_owned()
+    }
+
     pub fn mqtt_get_address(
         &self,
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
-        let address = {
-            let address = self.node_addr.address.lock().unwrap();
-            address.to_string()
-        };
+        let address = self.get_master_address().to_string();
 
         let response = json!(
             {
@@ -73,7 +75,7 @@ impl MasterAddress {
         let address_clone = address.clone();
 
         let request = AddressSetRequest::new(address);
-        let frame = Frame::new_request(request);
+        let frame = Frame::new_request(None, request);
         let req_info = ReqInfo::new_with_mqtt(
             &frame,
             message.topic(),
@@ -103,7 +105,7 @@ impl MasterAddress {
                         {
                             let mut address = self.node_addr.address.lock().unwrap();
                             *address = *mqtt_req_info
-                                .extra_data()
+                                .get_extra_data()
                                 .unwrap()
                                 .downcast::<Address>()
                                 .unwrap();

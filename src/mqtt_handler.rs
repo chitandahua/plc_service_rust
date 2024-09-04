@@ -97,6 +97,8 @@ pub enum MqttTopicType {
     GetAcqFilesNum,
     DelAcqFiles,
     ClearAcqFiles,
+    // 并发抄表
+    ConcurrentMeter,
 }
 
 struct MqttTopicFilter {
@@ -108,6 +110,7 @@ struct MqttTopicFilter {
 pub struct MqttMsgHandler {
     mqtt_msg_sender: mpsc::Sender<MqttMessage>,
     uart_msg_sender: mpsc::Sender<UartMessage>,
+    concurrent_msg_sender: mpsc::Sender<UartMessage>,
     topic_filters: Vec<MqttTopicFilter>,
     priority_queue: Arc<PriorityQueue>,
     msg_receiver: mpsc::Receiver<MqttMessage>,
@@ -117,11 +120,13 @@ impl MqttMsgHandler {
     pub fn new(
         mqtt_msg_sender: mpsc::Sender<MqttMessage>,
         uart_msg_sender: mpsc::Sender<UartMessage>,
+        concurrent_msg_sender: mpsc::Sender<UartMessage>,
         msg_receiver: mpsc::Receiver<MqttMessage>,
     ) -> Self {
         Self {
             mqtt_msg_sender,
             uart_msg_sender,
+            concurrent_msg_sender,
             topic_filters: Vec::new(),
             priority_queue: Arc::new(PriorityQueue::new()),
             msg_receiver,
@@ -133,6 +138,7 @@ impl MqttMsgHandler {
         let MqttMsgHandler {
             mqtt_msg_sender,
             uart_msg_sender,
+            concurrent_msg_sender,
             topic_filters,
             priority_queue,
             msg_receiver,
@@ -191,6 +197,15 @@ impl MqttMsgHandler {
                         MqttTopicType::GetAcqFilesNum => services
                             .node_manage
                             .mqtt_get_acq_files_number(message, &mqtt_msg_sender, &uart_msg_sender),
+                        MqttTopicType::ConcurrentMeter => {
+                            let master_address = services.master_address.get_master_address();
+                            services.concurrent_meter.mqtt_concurrent_meter_reading(
+                                message,
+                                master_address,
+                                &mqtt_msg_sender,
+                                &concurrent_msg_sender,
+                            )
+                        }
                         _ => {
                             error!("unrecognized topic: {}", topic);
                             Ok(())

@@ -8,4 +8,4 @@ mod info_field;
 pub use info_field::{InfoField, InfoFieldType};
 
 mod user_data;
-pub use user_data::UserData;
+pub use user_data::{AddressField, UserData};

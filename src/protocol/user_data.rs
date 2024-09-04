@@ -22,6 +22,18 @@ pub struct AddressField {
 }
 
 impl AddressField {
+    pub fn new(
+        src_address: Address,
+        relay_address: Option<Vec<Address>>,
+        dst_address: Address,
+    ) -> Self {
+        Self {
+            src_address,
+            relay_address,
+            dst_address,
+        }
+    }
+
     fn length(&self) -> usize {
         ADDR_LEN * (2 + self.relay_address.as_ref().map_or(0, |r| r.len()))
     }

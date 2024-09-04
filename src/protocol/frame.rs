@@ -8,7 +8,7 @@ use strum_macros::EnumString;
 use thiserror::Error;
 
 use crate::protocol::app_data::{Afn, AnswerFn};
-use crate::protocol::{info_field, AppData, UserData};
+use crate::protocol::{info_field, AddressField, AppData, UserData};
 use crate::Result;
 
 #[derive(Debug, Clone)]
@@ -220,8 +220,13 @@ fn calc_checksum(bytes: &[u8]) -> u8 {
 static SEQ: AtomicU8 = AtomicU8::new(0);
 
 impl Frame {
-    fn new(is_response: bool, seq: u8, app_data: AppData) -> Self {
-        let user_data = UserData::new(seq, None, app_data);
+    fn new(
+        is_response: bool,
+        seq: u8,
+        address_field: Option<AddressField>,
+        app_data: AppData,
+    ) -> Self {
+        let user_data = UserData::new(seq, address_field, app_data);
         let mut frame = Frame {
             header: Header::new((FRAME_SIZE + user_data.length()) as u16),
             ctrl_field: CtrlField::new(is_response),
@@ -241,12 +246,21 @@ impl Frame {
         self.clone().into()
     }
 
-    pub fn new_request(app_data: impl Into<AppData>) -> Self {
-        Frame::new(false, SEQ.fetch_add(1, Ordering::Relaxed), app_data.into())
+    pub fn new_request(address_field: Option<AddressField>, app_data: impl Into<AppData>) -> Self {
+        Frame::new(
+            false,
+            SEQ.fetch_add(1, Ordering::Relaxed),
+            address_field,
+            app_data.into(),
+        )
     }
 
-    pub fn new_response(seq: u8, app_data: impl Into<AppData>) -> Self {
-        Frame::new(true, seq, app_data.into())
+    pub fn new_response(
+        seq: u8,
+        address_field: Option<AddressField>,
+        app_data: impl Into<AppData>,
+    ) -> Self {
+        Frame::new(true, seq, address_field, app_data.into())
     }
 
     pub fn into_app_data(self) -> AppData {
@@ -415,7 +429,7 @@ mod tests {
     #[test]
     fn test_frame_new_response() {
         let app_data = create_dummy_app_data();
-        let frame = Frame::new_response(5, app_data.clone());
+        let frame = Frame::new_response(5, None, app_data.clone());
 
         assert_eq!(frame.ctrl_field.dir, Dir::Down);
         assert_eq!(frame.ctrl_field.prm, Prm::Slave);
@@ -517,14 +531,14 @@ mod tests {
     #[test]
     fn test_frame_is_confirm() {
         let app_data = AppData::new(Afn::Answer, AnswerFn::Confirm as u8, Some(vec![]));
-        let frame = Frame::new_response(0, app_data);
+        let frame = Frame::new_response(0, None, app_data);
         assert!(frame.is_confirm());
     }
 
     #[test]
     fn test_frame_is_deny() {
         let app_data = AppData::new(Afn::Answer, AnswerFn::Deny as u8, Some(vec![]));
-        let frame = Frame::new_response(0, app_data);
+        let frame = Frame::new_response(0, None, app_data);
         assert!(frame.is_deny());
     }
 
@@ -538,7 +552,7 @@ mod tests {
 
     #[test]
     fn test_frame_is_master_response() {
-        let frame = Frame::new_response(0, create_dummy_app_data());
+        let frame = Frame::new_response(0, None, create_dummy_app_data());
         assert!(frame.is_master_response());
     }
 

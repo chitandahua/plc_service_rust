@@ -318,7 +318,7 @@ impl NodeManage {
             };
             mqtt_req_info.set_extra_data(Some(Box::new(extra_data)));
         }
-        let frame = Frame::new_request(T::create_uart_request(node_infos));
+        let frame = Frame::new_request(None, T::create_uart_request(node_infos));
 
         let req_info = ReqInfo::new(&frame, mqtt_req_info, None);
         uart_msg_sender.send(UartMessage::new(req_info, frame))?;
@@ -405,7 +405,7 @@ impl NodeManage {
             self.cond.notify_one();
         } else {
             let mut mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
-            let extra_data = mqtt_req_info.extra_data().unwrap();
+            let extra_data = mqtt_req_info.get_extra_data().unwrap();
             let node_infos = extra_data.downcast::<NodeInfoData>().unwrap();
             let mut node_conf = self.node_conf.lock().unwrap();
             let result = T::update_node_config(
@@ -430,7 +430,7 @@ impl NodeManage {
 
     // 仅初始化时调用
     pub fn _clear_acq_files(&self, uart_msg_sender: &mpsc::Sender<UartMessage>) -> Result<()> {
-        let frame = Frame::new_request(InitRequest::new(InitOperation::Params));
+        let frame = Frame::new_request(None, InitRequest::new(InitOperation::Params));
         let req_info = ReqInfo::new(&frame, None, None);
 
         let node_config = self.node_conf.lock().unwrap();
@@ -488,10 +488,10 @@ impl NodeManage {
             .map(|query_cco| query_cco != 0)
             .unwrap_or(false)
         {
-            let frame = Frame::new_request(QueryNodeInfoRequest::new(
-                start_index as u16,
-                cur_meter_num as u8,
-            ));
+            let frame = Frame::new_request(
+                None,
+                QueryNodeInfoRequest::new(start_index as u16, cur_meter_num as u8),
+            );
             let req_info = ReqInfo::new(
                 &frame,
                 Some(message.to_mqtt_req_info()),
@@ -536,7 +536,7 @@ impl NodeManage {
             .map(|query_cco| query_cco != 0)
             .unwrap_or(false)
         {
-            let frame = Frame::new_request(QueryNodeNumberRequest);
+            let frame = Frame::new_request(None, QueryNodeNumberRequest);
             let req_info = ReqInfo::new(
                 &frame,
                 Some(message.to_mqtt_req_info()),

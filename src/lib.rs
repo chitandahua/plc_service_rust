@@ -32,7 +32,7 @@ mod uart_agent;
 use uart_agent::{UartAgent, UartHandler};
 
 mod service;
-use service::{MasterAddress, ModuleInfo, ModuleService, NodeManage};
+use service::{ConcurrentMeter, MasterAddress, ModuleInfo, ModuleService, NodeManage};
 
 mod uart_handler;
 use uart_handler::UartMsgHandler;
@@ -57,13 +57,24 @@ pub fn run(args: Args) -> Result<()> {
     let (sender, receiver) = mpsc::channel();
     let (msg_sender, msg_receiver) = mpsc::channel();
 
-    let mut mqtt_msg_handler =
-        MqttMsgHandler::new(sender.clone(), uart_msg_sender.clone(), msg_receiver);
-    let services = module_init(&mut mqtt_msg_handler);
+    let mut mqtt_msg_handler = MqttMsgHandler::new(
+        sender.clone(),
+        uart_msg_sender.clone(),
+        concurrent_msg_sender.clone(),
+        msg_receiver,
+    );
+
+    // timer
+    let timer = Arc::new(Timer::new());
+    let services = module_init(&mut mqtt_msg_handler, timer.clone());
 
     // uart
-    let uart_handler =
-        UartMsgHandler::new(sender.clone(), uart_msg_sender.clone(), services.clone());
+    let uart_handler = UartMsgHandler::new(
+        sender.clone(),
+        uart_msg_sender.clone(),
+        concurrent_msg_sender.clone(),
+        services.clone(),
+    );
     let sock_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 34567);
     let uart_agent = UartAgent::new(
         sender.clone(),
@@ -74,9 +85,6 @@ pub fn run(args: Args) -> Result<()> {
     )?;
 
     let handler = Handler::new(msg_sender, mqtt_msg_handler.subscribe_topics());
-
-    // timer
-    let timer = Arc::new(Timer::new());
 
     let mut join_handler = mqtt_client.run(handler, receiver)?;
     join_handler.extend(uart_agent.run(uart_handler, timer.clone())?);
@@ -90,14 +98,17 @@ pub fn run(args: Args) -> Result<()> {
     Ok(())
 }
 
-fn module_init(mqtt_msg_handler: &mut MqttMsgHandler) -> ModuleService {
+fn module_init(mqtt_msg_handler: &mut MqttMsgHandler, timer: Arc<Timer>) -> ModuleService {
     ModuleInfo::init(mqtt_msg_handler);
     let master_address = MasterAddress::new("123456789012".to_string());
     master_address.init(mqtt_msg_handler);
     let node_manage = NodeManage::new(None, 6);
     node_manage.init(mqtt_msg_handler);
 
-    ModuleService::new(master_address, node_manage)
+    let concurrent_meter = ConcurrentMeter::new(&timer);
+    concurrent_meter.init(mqtt_msg_handler);
+
+    ModuleService::new(master_address, node_manage, concurrent_meter)
 }
 
 const APP_VERSION: &str = "ST01.000";

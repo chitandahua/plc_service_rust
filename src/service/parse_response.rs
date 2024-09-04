@@ -1,17 +1,11 @@
 use std::sync::mpsc;
 
-use crate::mqtt_message::{MqttMessage, MqttPayload};
-use crate::protocol::app_data::{
-    self, ConfirmResponse, DenyResponse, QueryNodeInfoResponse, QueryNodeNumberResponse,
-};
-use crate::protocol::AppData;
-use crate::protocol::Frame;
+use crate::mqtt_message::MqttMessage;
+use crate::protocol::app_data::{ConfirmResponse, DenyResponse};
+use crate::protocol::{AppData, Frame};
 use crate::request_info::{MqttReqInfo, UartMessage};
+use crate::service::IntoMqttMessage;
 use crate::Result;
-
-use crate::service::module_info;
-use crate::service::node_config::NodeInfo;
-use crate::service::node_manage::NodeNumerResponse;
 
 pub enum UartResponse<T> {
     Normal(T),
@@ -54,62 +48,6 @@ impl From<UartResponse<ConfirmResponse>> for Result<()> {
             UartResponse::Deny(response) => Err(anyhow::anyhow!(response.error_code())),
             UartResponse::Normal(_) => Ok(()),
         }
-    }
-}
-
-pub trait IntoMqttMessage {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage;
-}
-
-impl IntoMqttMessage for ConfirmResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        let payload = MqttPayload::new_with_token_status_reason(mqtt_req_info.token(), "OK", "OK");
-        MqttMessage::new(mqtt_req_info.topic(), payload)
-    }
-}
-
-impl IntoMqttMessage for DenyResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        let payload = MqttPayload::new_with_token_status_reason(
-            mqtt_req_info.token(),
-            "FAILURE",
-            self.error_code(),
-        );
-        MqttMessage::new(mqtt_req_info.topic(), payload)
-    }
-}
-
-impl IntoMqttMessage for QueryNodeNumberResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(serde_json::to_value(NodeNumerResponse::from(self)).unwrap()),
-        )
-    }
-}
-
-impl IntoMqttMessage for QueryNodeInfoResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        let node_infos: Vec<NodeInfo> = self
-            .into_node_infos()
-            .into_iter()
-            .map(|n| n.into())
-            .collect();
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(serde_json::to_value(&node_infos).unwrap()),
-        )
-    }
-}
-
-impl IntoMqttMessage for app_data::ModuleInfoResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        let response = module_info::ModuleInfoResponse::from(self);
-
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(serde_json::to_value(response).unwrap()),
-        )
     }
 }
 

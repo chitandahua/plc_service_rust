@@ -17,9 +17,13 @@ mod node_manage;
 pub use node_manage::NodeManage;
 
 mod parse_response;
-pub use parse_response::{IntoMqttMessage, UartResponse};
+pub use parse_response::UartResponse;
 
 use std::sync::Arc;
+
+use crate::protocol::app_data::{ConfirmResponse, DenyResponse};
+use crate::request_info::MqttReqInfo;
+use crate::{MqttMessage, MqttPayload};
 
 #[derive(Clone)]
 pub struct ModuleService {
@@ -39,5 +43,27 @@ impl ModuleService {
             node_manage: Arc::new(node_manage),
             concurrent_meter,
         }
+    }
+}
+
+pub trait IntoMqttMessage {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage;
+}
+
+impl IntoMqttMessage for ConfirmResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        let payload = MqttPayload::new_with_token_status_reason(mqtt_req_info.token(), "OK", "OK");
+        MqttMessage::new(mqtt_req_info.topic(), payload)
+    }
+}
+
+impl IntoMqttMessage for DenyResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        let payload = MqttPayload::new_with_token_status_reason(
+            mqtt_req_info.token(),
+            "FAILURE",
+            self.error_code(),
+        );
+        MqttMessage::new(mqtt_req_info.topic(), payload)
     }
 }

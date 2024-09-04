@@ -16,9 +16,8 @@ use crate::protocol::app_data::{
 use crate::protocol::Frame;
 use crate::request_info::{self, MqttReqInfo};
 use crate::service::parse_response::uart_response_mqtt_handler;
-use crate::service::UartResponse;
-use crate::UartMessage;
-use crate::{MqttMsgHandler, ReqInfo, Result, APP_NAME};
+use crate::service::{IntoMqttMessage, UartResponse};
+use crate::{MqttMsgHandler, ReqInfo, Result, UartMessage, APP_NAME};
 
 struct NodeConfig {
     node_config: node_config::NodeConfig,
@@ -564,5 +563,28 @@ impl NodeManage {
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
         uart_response_mqtt_handler::<QueryNodeNumberResponse>(message, mqtt_msg_sender)
+    }
+}
+
+impl IntoMqttMessage for QueryNodeNumberResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttMessage::new_with_req_info_body(
+            mqtt_req_info,
+            Some(serde_json::to_value(NodeNumerResponse::from(self)).unwrap()),
+        )
+    }
+}
+
+impl IntoMqttMessage for QueryNodeInfoResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        let node_infos: Vec<NodeInfo> = self
+            .into_node_infos()
+            .into_iter()
+            .map(|n| n.into())
+            .collect();
+        MqttMessage::new_with_req_info_body(
+            mqtt_req_info,
+            Some(serde_json::to_value(&node_infos).unwrap()),
+        )
     }
 }

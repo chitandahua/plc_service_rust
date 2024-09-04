@@ -5,9 +5,9 @@ use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::MqttPayload;
 use crate::protocol::app_data::{self, AppData, ConfirmResponse, ModuleInfoRequest};
 use crate::protocol::Frame;
-use crate::request_info::{self, UartMessage};
-use crate::APP_NAME;
-use crate::{MqttMessage, MqttMsgHandler, ReqInfo, Result};
+use crate::request_info::{self, MqttReqInfo, UartMessage};
+use crate::service::IntoMqttMessage;
+use crate::{MqttMessage, MqttMsgHandler, ReqInfo, Result, APP_NAME};
 
 pub struct ModuleInfo;
 
@@ -110,5 +110,16 @@ impl From<app_data::ModuleInfoResponse> for ModuleInfoResponse {
                 module_info_response.version
             ),
         }
+    }
+}
+
+impl IntoMqttMessage for app_data::ModuleInfoResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        let response = ModuleInfoResponse::from(self);
+
+        MqttMessage::new_with_req_info_body(
+            mqtt_req_info,
+            Some(serde_json::to_value(response).unwrap()),
+        )
     }
 }

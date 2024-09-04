@@ -6,12 +6,11 @@ use crate::mqtt_handler::MqttTopicType;
 use crate::protocol::app_data::{AddressSetRequest, ConfirmResponse};
 use crate::protocol::Frame;
 use crate::request_info;
+use crate::service::{IntoMqttMessage, UartResponse};
 use crate::{
     mqtt_message::MqttMessage, protocol::app_data::Address, MqttMsgHandler, ReqInfo, Result,
     UartMessage, APP_NAME,
 };
-
-use super::{IntoMqttMessage, UartResponse};
 
 pub struct MasterAddress {
     node_addr: NodeAddress,

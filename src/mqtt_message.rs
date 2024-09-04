@@ -2,14 +2,10 @@ use std::sync::atomic::AtomicU64;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use thiserror::Error;
 
 use crate::request_info::MqttReqInfo;
-use crate::request_info::ReqInfo;
-use crate::request_info::UartMessage;
 use crate::MqttTopic;
 use crate::Result;
-use crate::APP_NAME;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MqttPayload {
@@ -190,58 +186,6 @@ impl TryFrom<paho_mqtt::Message> for MqttMessage {
     fn try_from(msg: paho_mqtt::Message) -> Result<Self> {
         let payload = String::from_utf8(msg.payload().to_vec())?;
         Ok(MqttMessage::new(msg.topic(), payload))
-    }
-}
-
-const STATUS_OK: &str = "OK";
-const STATUS_FAILURE: &str = "FAILURE";
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct MqttCommonResponse {
-    token: String,
-    timestamp: String,
-    status: &'static str,
-    msg: Option<String>,
-}
-
-impl MqttCommonResponse {
-    pub fn new(token: String, result: bool, msg: Option<String>) -> Self {
-        Self {
-            token,
-            timestamp: get_timestamp(),
-            status: match result {
-                true => STATUS_OK,
-                false => STATUS_FAILURE,
-            },
-            msg,
-        }
-    }
-
-    #[cfg(test)]
-    fn set_status(&mut self, result: bool) {
-        match result {
-            true => self.status = STATUS_OK,
-            false => self.status = STATUS_FAILURE,
-        }
-    }
-}
-
-impl MqttMessage {
-    pub fn common_response(topic: &str, _payload: &str) -> Result<Self> {
-        let topic = MqttTopic::transfer(topic);
-        //let payload = MqttPayload::try_from(payload)?;
-
-        Ok(MqttMessage::new(topic, ""))
-    }
-
-    pub fn set_payload(&mut self, payload: String) {
-        self.payload = payload;
-    }
-
-    pub fn set_response_payload(&mut self, token: &str, status: bool, msg: Option<String>) {
-        let response: MqttCommonResponse = MqttCommonResponse::new(token.into(), status, msg);
-        let payload = serde_json::to_string(&response).unwrap();
-        self.set_payload(payload);
     }
 }
 

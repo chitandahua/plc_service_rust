@@ -1,7 +1,6 @@
 use anyhow::ensure;
 use chrono::NaiveDate;
-use std::fmt::Formatter;
-use std::fmt::{self, Display};
+use std::fmt;
 
 use crate::protocol::app_data::{Address, Afn, AppDataError};
 use crate::protocol::user_data::hex_to_dec;
@@ -23,6 +22,7 @@ impl From<ModuleInfoRequest> for AppData {
     }
 }
 
+#[allow(dead_code)]
 pub struct ModuleInfoResponse {
     pub metering_mode: u8,
     pub node_info_mode: u8,
@@ -70,7 +70,7 @@ impl ModuleInfoResponse {
 
 impl TryFrom<AppData> for ModuleInfoResponse {
     type Error = crate::Error;
-    fn try_from(app_data: AppData) -> std::result::Result<Self, Self::Error> {
+    fn try_from(app_data: AppData) -> Result<Self> {
         ensure!(
             app_data.data_length() >= 39,
             AppDataError::DataLength(app_data.data_length())

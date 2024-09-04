@@ -1,9 +1,9 @@
 use anyhow::ensure;
+use std::fmt::Display;
 use std::fmt::Formatter;
-use std::fmt::{self, Display};
 
-use crate::protocol::app_data::{Address, Afn, AppDataError, ADDR_LEN};
-use crate::protocol::{self, AppData};
+use crate::protocol::app_data::{Afn, AppDataError};
+use crate::protocol::AppData;
 use crate::Result;
 
 // AFN F1H

@@ -47,10 +47,7 @@ impl UartAgent {
         uart_config: PathBuf,
         tcp_addr: Option<SocketAddr>,
     ) -> Result<Self> {
-        let UartPort {
-            mut reader,
-            mut writer,
-        } = UartPort::new(uart_config, tcp_addr)?;
+        let UartPort { reader, writer } = UartPort::new(uart_config, tcp_addr)?;
 
         Ok(UartAgent {
             mqtt_msg_sender,

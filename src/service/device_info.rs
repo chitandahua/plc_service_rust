@@ -1,5 +1,5 @@
 use crate::{MqttMessage, Result, APP_NAME};
-use serde_json::{json, Value};
+use serde_json::json;
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::Duration;
 

@@ -83,7 +83,7 @@ impl ReqInfo {
     ) -> Self {
         ReqInfo {
             mqtt_req_info,
-            frame_key: FrameKey(frame.afn().into(), frame.fn_num()),
+            frame_key: FrameKey::new(frame.afn().into(), frame.fn_num()),
             seq_num: frame.get_seq(),
             timeout_cb,
         }
@@ -102,7 +102,7 @@ impl ReqInfo {
                 token.to_string(),
                 extra_data,
             )),
-            frame_key: FrameKey(frame.afn().into(), frame.fn_num()),
+            frame_key: FrameKey::new(frame.afn().into(), frame.fn_num()),
             seq_num: frame.get_seq(),
             timeout_cb,
         }

@@ -1,17 +1,13 @@
-use crate::protocol::app_data::ModuleInfoRequest;
-use crate::protocol::Frame;
-use crate::request_info::ReqInfo;
 use crate::service::{MasterAddress, ModuleInfo, ModuleService};
-use crate::{MqttClient, MqttHandler, Result};
-use crate::{MqttMessage, TopicError, UartMessage};
+use crate::{MqttHandler, Result};
+use crate::{MqttMessage, UartMessage};
 
 use paho_mqtt::TopicFilter;
 use std::sync::atomic::AtomicU64;
 use std::sync::{mpsc, Condvar};
 use tracing::{debug, error, warn};
 
-use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::BinaryHeap;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
@@ -147,80 +143,71 @@ impl MqttMsgHandler {
 
         let msg_handle = thread::spawn(move || loop {
             let message = msg_receiver.recv().unwrap();
-            let priority = message.get_priority();
             let priority_message = PriorityMessage::new(message);
             priority_queue_clone.push(priority_message);
         });
 
-        let handle = thread::spawn(move || {
-            loop {
-                let priority_message = priority_queue.pop();
-                debug!("priority message: {:?}", priority_message);
-                let message = priority_message.message;
+        let handle = thread::spawn(move || loop {
+            let priority_message = priority_queue.pop();
+            debug!("priority message: {:?}", priority_message);
+            let message = priority_message.message;
 
-                let topic = message.topic();
-                let sub_topic = topic_filters
-                    .iter()
-                    .find(|&topic_filter| topic_filter.filter.matches(topic));
+            let topic = message.topic();
+            let sub_topic = topic_filters
+                .iter()
+                .find(|&topic_filter| topic_filter.filter.matches(topic));
 
-                if let Some(sub_topic) = sub_topic {
-                    let result = match sub_topic.mqtt_topic_type {
-                        MqttTopicType::GetModuleInfo => {
-                            ModuleInfo::mqtt_get_module_info(message, &uart_msg_sender)
-                        }
-                        MqttTopicType::GetMasterAddress => services
-                            .master_address
-                            .mqtt_get_address(message, &mqtt_msg_sender, &uart_msg_sender),
-                        MqttTopicType::SetMasterAddress => {
-                            MasterAddress::mqtt_set_address(message, &uart_msg_sender)
-                        }
-                        MqttTopicType::AddAcqFiles => services.node_manage.mqtt_add_acq_files(
-                            message,
-                            &mqtt_msg_sender,
-                            &uart_msg_sender,
-                        ),
-                        MqttTopicType::DelAcqFiles => services.node_manage.mqtt_del_acq_files(
-                            message,
-                            &mqtt_msg_sender,
-                            &uart_msg_sender,
-                        ),
-                        MqttTopicType::ClearAcqFiles => services.node_manage.mqtt_clear_acq_files(
-                            message,
-                            &mqtt_msg_sender,
-                            &uart_msg_sender,
-                        ),
-                        MqttTopicType::GetAcqFiles => services.node_manage.mqtt_get_acq_files(
-                            message,
-                            &mqtt_msg_sender,
-                            &uart_msg_sender,
-                        ),
-                        MqttTopicType::GetAcqFilesNum => services
-                            .node_manage
-                            .mqtt_get_acq_files_number(message, &mqtt_msg_sender, &uart_msg_sender),
-                        MqttTopicType::ConcurrentMeter => {
-                            let master_address = services.master_address.get_master_address();
-                            services.concurrent_meter.mqtt_concurrent_meter_reading(
-                                message,
-                                master_address,
-                                &mqtt_msg_sender,
-                                &concurrent_msg_sender,
-                            )
-                        }
-                        _ => {
-                            error!("unrecognized topic: {}", topic);
-                            Ok(())
-                        }
-                    };
-
-                    if let Err(e) = result {
-                        error!("mqtt msg handler error: {}", e);
+            if let Some(sub_topic) = sub_topic {
+                let result = match sub_topic.mqtt_topic_type {
+                    MqttTopicType::GetModuleInfo => {
+                        ModuleInfo::mqtt_get_module_info(message, &uart_msg_sender)
                     }
-                } else {
-                    warn!("unrecognized topic: {}", topic);
-                }
-            }
+                    MqttTopicType::GetMasterAddress => services
+                        .master_address
+                        .mqtt_get_address(message, &mqtt_msg_sender),
+                    MqttTopicType::SetMasterAddress => {
+                        MasterAddress::mqtt_set_address(message, &uart_msg_sender)
+                    }
+                    MqttTopicType::AddAcqFiles => services.node_manage.mqtt_add_acq_files(
+                        message,
+                        &mqtt_msg_sender,
+                        &uart_msg_sender,
+                    ),
+                    MqttTopicType::DelAcqFiles => services.node_manage.mqtt_del_acq_files(
+                        message,
+                        &mqtt_msg_sender,
+                        &uart_msg_sender,
+                    ),
+                    MqttTopicType::ClearAcqFiles => services.node_manage.mqtt_clear_acq_files(
+                        message,
+                        &mqtt_msg_sender,
+                        &uart_msg_sender,
+                    ),
+                    MqttTopicType::GetAcqFiles => services.node_manage.mqtt_get_acq_files(
+                        message,
+                        &mqtt_msg_sender,
+                        &uart_msg_sender,
+                    ),
+                    MqttTopicType::GetAcqFilesNum => services
+                        .node_manage
+                        .mqtt_get_acq_files_number(message, &mqtt_msg_sender, &uart_msg_sender),
+                    MqttTopicType::ConcurrentMeter => {
+                        let master_address = services.master_address.get_master_address();
+                        services.concurrent_meter.mqtt_concurrent_meter_reading(
+                            message,
+                            master_address,
+                            &mqtt_msg_sender,
+                            &concurrent_msg_sender,
+                        )
+                    }
+                };
 
-            warn!("mqtt msg handler exit");
+                if let Err(e) = result {
+                    error!("mqtt msg handler error: {}", e);
+                }
+            } else {
+                warn!("unrecognized topic: {}", topic);
+            }
         });
 
         Ok(vec![handle, msg_handle])

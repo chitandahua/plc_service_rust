@@ -1,14 +1,12 @@
-use serde_json::Value;
 use std::sync::mpsc;
 
 use crate::mqtt_message::{MqttMessage, MqttPayload};
 use crate::protocol::app_data::{
-    self, ConcurrentReadMeterResponse, ConfirmResponse, DenyResponse, QueryNodeInfoResponse,
-    QueryNodeNumberRequest, QueryNodeNumberResponse,
+    self, ConfirmResponse, DenyResponse, QueryNodeInfoResponse, QueryNodeNumberResponse,
 };
 use crate::protocol::AppData;
 use crate::protocol::Frame;
-use crate::request_info::{MqttReqInfo, ReqInfo, UartMessage};
+use crate::request_info::{MqttReqInfo, UartMessage};
 use crate::Result;
 
 use crate::service::module_info;
@@ -115,7 +113,7 @@ impl IntoMqttMessage for app_data::ModuleInfoResponse {
     }
 }
 
-pub(crate) fn uart_response_handler<T: IntoMqttMessage + TryFrom<AppData>>(
+pub(crate) fn _uart_response_handler<T: IntoMqttMessage + TryFrom<AppData>>(
     init_handler: impl Fn(u8, UartResponse<T>, &mpsc::Sender<UartMessage>) -> Result<()>,
     message: UartMessage,
     mqtt_msg_sender: &mpsc::Sender<MqttMessage>,

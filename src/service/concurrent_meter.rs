@@ -12,7 +12,7 @@ use crate::mqtt_message::MqttPayload;
 use crate::mqtt_topic::MqttTopic;
 use crate::protocol::app_data::{Address, ConcurrentReadMeterRequest, ConcurrentReadMeterResponse};
 use crate::protocol::{AddressField, Frame};
-use crate::request_info::{self, MqttReqInfo, ReqInfo, UartMessage};
+use crate::request_info::{MqttReqInfo, ReqInfo, UartMessage};
 use crate::service::parse_response::uart_response_mqtt_handler;
 use crate::service::IntoMqttMessage;
 use crate::{MqttMessage, MqttMsgHandler, Result, APP_NAME};
@@ -47,7 +47,7 @@ struct MeterConfig {
 #[derive(Clone)]
 pub struct ConcurrentMeter {
     concurrent_meter: Arc<ConcurrentMeterManager>,
-    aging_queue: Guard,
+    _aging_queue: Guard,
 }
 
 struct ConcurrentMeterManager {
@@ -116,7 +116,7 @@ impl ConcurrentMeter {
         let concurrent_meter_clone = concurrent_meter.clone();
 
         let queue_aging_time = concurrent_meter.meter_config.queue_aging_time;
-        let aging_queue =
+        let _aging_queue =
             timer.schedule_repeating(chrono::Duration::minutes(queue_aging_time), move || {
                 let mut sample_cache = concurrent_meter_clone.sample_cache.lock().unwrap();
                 sample_cache.retain(|_, v| {
@@ -128,7 +128,7 @@ impl ConcurrentMeter {
             });
         ConcurrentMeter {
             concurrent_meter,
-            aging_queue,
+            _aging_queue,
         }
     }
 

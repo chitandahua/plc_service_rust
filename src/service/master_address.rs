@@ -1,17 +1,14 @@
 use serde_json::{json, Value};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use tracing::{error, info};
 
 use crate::mqtt_handler::MqttTopicType;
 use crate::protocol::app_data::{AddressSetRequest, ConfirmResponse};
 use crate::protocol::Frame;
 use crate::request_info;
 use crate::{
-    mqtt_message::{MqttMessage, MqttPayload},
-    mqtt_topic::MqttTopic,
-    protocol::app_data::Address,
-    MqttMsgHandler, ReqInfo, Result, UartMessage, UartMsgHandler, APP_NAME,
+    mqtt_message::MqttMessage, protocol::app_data::Address, MqttMsgHandler, ReqInfo, Result,
+    UartMessage, APP_NAME,
 };
 
 use super::{IntoMqttMessage, UartResponse};
@@ -51,7 +48,6 @@ impl MasterAddress {
         &self,
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
-        uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
         let address = self.get_master_address().to_string();
 

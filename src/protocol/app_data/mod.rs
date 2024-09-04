@@ -1,21 +1,21 @@
 use crate::Result;
-use anyhow::{bail, ensure};
+use anyhow::ensure;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use std::fmt::{self, Display, Formatter};
-use strum_macros::{EnumString, ToString};
+use std::fmt::{Display, Formatter};
+
 use thiserror::Error;
 
 mod answer;
-pub use answer::{AnswerFn, ConfirmResponse, DenyErrorCode, DenyResponse};
+pub use answer::{AnswerFn, ConfirmResponse, DenyResponse};
 
 mod ctrl_cmd;
-pub use ctrl_cmd::{AddressSetRequest, CtrlCmd};
+pub use ctrl_cmd::AddressSetRequest;
 
 mod init;
 pub use init::{InitOperation, InitRequest};
 
 mod meter_reading;
-pub use meter_reading::{ConcurrentReadMeterRequest, ConcurrentReadMeterResponse, MeterReading};
+pub use meter_reading::{ConcurrentReadMeterRequest, ConcurrentReadMeterResponse};
 
 mod query_data;
 pub use query_data::{ModuleInfoRequest, ModuleInfoResponse};
@@ -26,11 +26,11 @@ pub use query_data::{ModuleInfoRequest, ModuleInfoResponse};
 mod route_get;
 pub use route_get::{
     NodeDetail, QueryNodeInfoRequest, QueryNodeInfoResponse, QueryNodeNumberRequest,
-    QueryNodeNumberResponse, RouteQuery,
+    QueryNodeNumberResponse,
 };
 
 mod route_set;
-pub use route_set::{AddNodeRequest, DelNodeRequest, NodeInfo, RouteSet};
+pub use route_set::{AddNodeRequest, DelNodeRequest, NodeInfo};
 
 pub const ADDR_LEN: usize = 6;
 #[derive(Debug, Clone, PartialEq)]
@@ -120,7 +120,7 @@ pub struct DataFlag {
 }
 
 impl DataFlag {
-    fn new(type_: u8, mark: u8) -> Self {
+    fn _new(type_: u8, mark: u8) -> Self {
         Self { type_, mark }
     }
 

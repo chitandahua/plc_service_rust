@@ -1,7 +1,6 @@
 use crate::{Result, APP_NAME};
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
-use tracing::debug;
 
 #[derive(Debug, PartialEq)]
 pub enum MqttTopicOperator {

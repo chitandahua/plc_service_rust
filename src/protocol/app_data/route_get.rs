@@ -1,6 +1,4 @@
 use anyhow::ensure;
-use std::fmt::Formatter;
-use std::fmt::{self, Display};
 
 use crate::protocol::app_data::{Address, Afn, AppDataError};
 use crate::protocol::AppData;

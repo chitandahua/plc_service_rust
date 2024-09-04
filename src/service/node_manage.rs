@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::MqttMessage;
@@ -26,7 +26,7 @@ struct NodeConfig {
 }
 
 pub struct NodeManage {
-    config_path: Option<PathBuf>,
+    _config_path: Option<PathBuf>,
     timeout: u64,
     node_conf: Mutex<NodeConfig>,
     cond: Condvar,
@@ -58,7 +58,7 @@ trait AcqFilesOperation {
         node_infos: &[NodeInfo],
     ) -> Result<()>;
 
-    fn init_node_config(node_config: &mut node_config::NodeConfig) -> Result<()> {
+    fn init_node_config(_node_config: &mut node_config::NodeConfig) -> Result<()> {
         Ok(())
     }
 }
@@ -210,9 +210,9 @@ impl AcqFilesOperation for ClearAcqFiles {
 
 const ACQ_FILES_CHUNK_SIZE: usize = 10;
 impl NodeManage {
-    pub fn new(config_path: Option<PathBuf>, timeout: u64) -> Self {
+    pub fn new(_config_path: Option<PathBuf>, timeout: u64) -> Self {
         Self {
-            config_path,
+            _config_path,
             timeout,
             node_conf: Mutex::new(NodeConfig {
                 node_config: node_config::NodeConfig::new(),
@@ -275,7 +275,7 @@ impl NodeManage {
                     "FAILURE",
                     e.to_string(),
                 ))?;
-                return anyhow::bail!(e);
+                return Err(e);
             }
             Ok(node_infos) => node_infos,
         };
@@ -353,7 +353,7 @@ impl NodeManage {
                 Ok(_) => {}
                 Err(e) => {
                     error!("operate chunk acq files error: {}", e);
-                    return anyhow::bail!(e);
+                    return Err(e);
                 }
             }
         }
@@ -501,7 +501,7 @@ impl NodeManage {
             uart_msg_sender.send(UartMessage::new(req_info, frame))?;
         } else {
             let body = {
-                let mut node_config = self.node_conf.lock().unwrap();
+                let node_config = self.node_conf.lock().unwrap();
                 let node_infos =
                     node_config
                         .node_config

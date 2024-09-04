@@ -5,7 +5,7 @@ mod frame;
 pub use frame::Frame;
 
 mod info_field;
-pub use info_field::{InfoField, InfoFieldType};
+pub use info_field::InfoField;
 
 mod user_data;
 pub use user_data::{AddressField, UserData};

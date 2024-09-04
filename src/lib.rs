@@ -15,7 +15,7 @@ mod mqtt_message;
 use mqtt_message::{MqttMessage, MqttPayload};
 
 mod mqtt_topic;
-use mqtt_topic::{MqttTopic, TopicError};
+use mqtt_topic::MqttTopic;
 
 mod mqtt_handler;
 use mqtt_handler::{Handler, MqttMsgHandler};
@@ -32,7 +32,7 @@ mod uart_agent;
 use uart_agent::{UartAgent, UartHandler};
 
 mod service;
-use service::{ConcurrentMeter, MasterAddress, ModuleInfo, ModuleService, NodeManage};
+use service::{ConcurrentMeter, DeviceInfo, MasterAddress, ModuleInfo, ModuleService, NodeManage};
 
 mod uart_handler;
 use uart_handler::UartMsgHandler;
@@ -46,7 +46,7 @@ pub const APP_NAME: &str = "PLCServiceGW";
 const MQTT_CONFIG_PATH: &str = "./mqtt_server.json";
 const UART_CONFIG_PATH: &str = "./com_setting.json";
 
-pub fn run(args: Args) -> Result<()> {
+pub fn run(_args: Args) -> Result<()> {
     tracing::debug!("mqtt client start");
 
     let mqtt_client = MqttClient::from_file(MQTT_CONFIG_PATH.into())?;
@@ -89,6 +89,9 @@ pub fn run(args: Args) -> Result<()> {
     let mut join_handler = mqtt_client.run(handler, receiver)?;
     join_handler.extend(uart_agent.run(uart_handler, timer.clone())?);
     join_handler.extend(mqtt_msg_handler.run(services)?);
+
+    let device_info = DeviceInfo::new();
+    device_info.run(&sender)?;
 
     for handler in join_handler {
         handler.join().unwrap();

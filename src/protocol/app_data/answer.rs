@@ -1,8 +1,7 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use strum_macros::{EnumString, ToString};
+use strum_macros::EnumString;
 
-use std::fmt::Formatter;
-use std::fmt::{self, Display};
+use std::fmt::Display;
 
 use crate::protocol::app_data::Afn;
 use crate::protocol::AppData;

@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 use thiserror::Error;
 use tracing::{debug, error, info};
-use tracing_subscriber::field::debug;
 
 use crate::protocol::app_data;
 use crate::Result;
@@ -77,7 +76,7 @@ impl GlobalNodeConfig {
         }
     }
 
-    pub fn size(&self) -> usize {
+    pub fn _size(&self) -> usize {
         self.global_data.len()
     }
 
@@ -85,7 +84,7 @@ impl GlobalNodeConfig {
         self.global_data.get(acq_addr).and_then(Weak::upgrade)
     }
 
-    pub fn get_all_node_infos(&self) -> Vec<Arc<NodeInfo>> {
+    pub fn _get_all_node_infos(&self) -> Vec<Arc<NodeInfo>> {
         self.global_data
             .values()
             .filter_map(Weak::upgrade)
@@ -148,7 +147,7 @@ impl NodeConfig {
         self.node_data.get_mut(app).unwrap().push(node);
     }
 
-    pub fn add_node_info(&mut self, app: &str, node: NodeInfo) -> Result<()> {
+    pub fn _add_node_info(&mut self, app: &str, node: NodeInfo) -> Result<()> {
         if false == self.add_node_info_exist(app, &node)? {
             self.add_node_info_checked(app, node);
         }
@@ -198,7 +197,7 @@ impl NodeConfig {
         self.global_node_config.remove_node_info(node)
     }
 
-    pub fn remove_node_info(&mut self, app: &str, node: &NodeInfo) -> Result<()> {
+    pub fn _remove_node_info(&mut self, app: &str, node: &NodeInfo) -> Result<()> {
         if self.should_remove_node_info(app, node) {
             self.remove_node_info_checked(app, node)?;
         }
@@ -206,7 +205,7 @@ impl NodeConfig {
         Ok(())
     }
 
-    pub fn clear_app(&mut self, app: &str) -> Result<()> {
+    pub fn _clear_app(&mut self, app: &str) -> Result<()> {
         if let Some(app_data) = self.node_data.remove(app) {
             for node in app_data {
                 self.global_node_config.remove_node_info(&node)?;
@@ -221,13 +220,13 @@ impl NodeConfig {
         self.global_node_config.global_data.clear();
     }
 
-    pub fn get_node_info(&self, app: &str, index: usize) -> Option<Arc<NodeInfo>> {
+    pub fn _get_node_info(&self, app: &str, index: usize) -> Option<Arc<NodeInfo>> {
         self.node_data
             .get(app)
             .and_then(|app_data| app_data.get(index).cloned())
     }
 
-    pub fn get_node_info_by_addr(&self, app: &str, acq_addr: &str) -> Option<Arc<NodeInfo>> {
+    pub fn _get_node_info_by_addr(&self, app: &str, acq_addr: &str) -> Option<Arc<NodeInfo>> {
         self.node_data
             .get(app)
             .and_then(|app_data| app_data.iter().find(|n| n.acq_addr == acq_addr))
@@ -261,9 +260,9 @@ impl NodeConfig {
             .unwrap_or(0)
     }
 
-    pub fn add_node_infos(&mut self, app: &str, nodes: Vec<NodeInfo>) -> Result<()> {
+    pub fn _add_node_infos(&mut self, app: &str, nodes: Vec<NodeInfo>) -> Result<()> {
         for node in nodes {
-            self.add_node_info(app, node)?;
+            self._add_node_info(app, node)?;
         }
         Ok(())
     }
@@ -274,9 +273,9 @@ impl NodeConfig {
         }
     }
 
-    pub fn remove_node_infos(&mut self, app: &str, nodes: &[NodeInfo]) -> Result<()> {
+    pub fn _remove_node_infos(&mut self, app: &str, nodes: &[NodeInfo]) -> Result<()> {
         for node in nodes {
-            self.remove_node_info(app, node)?;
+            self._remove_node_info(app, node)?;
         }
         Ok(())
     }
@@ -288,17 +287,17 @@ impl NodeConfig {
         Ok(())
     }
 
-    pub fn load_config(&mut self, config_path: Option<&Path>) -> Result<()> {
+    pub fn _load_config(&mut self, config_path: Option<&Path>) -> Result<()> {
         self.node_data.clear();
 
         if let Some(path) = config_path {
-            self.load_config_from_file(path)
+            self._load_config_from_file(path)
         } else {
-            self.load_config_from_db(get_db_path().as_path())
+            self._load_config_from_db(_get_db_path().as_path())
         }
     }
 
-    pub fn save_config_to_file(&self, config_path: &Path) -> Result<()> {
+    pub fn _save_config_to_file(&self, config_path: &Path) -> Result<()> {
         let mut result = serde_json::Map::new();
 
         for (app, nodes) in &self.node_data {
@@ -315,12 +314,12 @@ impl NodeConfig {
             .map_err(|e| anyhow::anyhow!("Failed to write config file: {}", e))
     }
 
-    fn load_config_from_file(&mut self, config_path: &Path) -> Result<()> {
+    fn _load_config_from_file(&mut self, _config_path: &Path) -> Result<()> {
         // Implementation for loading from file
         unimplemented!()
     }
 
-    fn load_config_from_db(&mut self, db_path: &Path) -> Result<()> {
+    fn _load_config_from_db(&mut self, _db_path: &Path) -> Result<()> {
         // Implementation for loading from database
         unimplemented!()
     }
@@ -328,7 +327,7 @@ impl NodeConfig {
     // ... Other methods ...
 }
 
-fn get_db_path() -> PathBuf {
+fn _get_db_path() -> PathBuf {
     // Implementation to get the database path
     unimplemented!()
 }

@@ -170,7 +170,7 @@ impl MqttClient {
             .unwrap_or_else(|e| error!(cause = ?e, "publish error"));
     }
 
-    pub fn client_id(&self) -> String {
+    pub fn _client_id(&self) -> String {
         self.client.client_id()
     }
 }

@@ -7,7 +7,7 @@ use std::time::Duration;
 use tracing::{error, info};
 
 use crate::mqtt_handler::MqttTopicType;
-use crate::mqtt_message::{MqttMessage, Status};
+use crate::mqtt_message::{MqttMessage, PayloadBody, Status};
 use crate::mqtt_topic::MqttTopic;
 use crate::protocol::app_data::{
     self, AddNodeRequest, Address, ConfirmResponse, DelNodeRequest, InitOperation, InitRequest,
@@ -507,7 +507,10 @@ impl NodeManage {
                         .get_node_infos(app, start_index, cur_meter_num);
                 serde_json::to_value(node_infos)?
             };
-            mqtt_msg_sender.send(MqttMessage::new_with_msg_body(message, Some(body)))?;
+            mqtt_msg_sender.send(MqttMessage::new_with_msg_body(
+                message,
+                Some(PayloadBody::Nested { body }),
+            ))?;
         }
 
         Ok(())
@@ -551,7 +554,10 @@ impl NodeManage {
             let body = serde_json::to_value(NodeNumerResponse {
                 acq_num: node_number.to_string(),
             })?;
-            mqtt_msg_sender.send(MqttMessage::new_with_msg_body(message, Some(body)))?;
+            mqtt_msg_sender.send(MqttMessage::new_with_msg_body(
+                message,
+                Some(PayloadBody::Flat(body)),
+            ))?;
         }
 
         Ok(())
@@ -570,7 +576,9 @@ impl IntoMqttMessage for QueryNodeNumberResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
         MqttMessage::new_with_req_info_body(
             mqtt_req_info,
-            Some(serde_json::to_value(NodeNumerResponse::from(self)).unwrap()),
+            Some(PayloadBody::Flat(
+                serde_json::to_value(NodeNumerResponse::from(self)).unwrap(),
+            )),
         )
     }
 }
@@ -584,7 +592,9 @@ impl IntoMqttMessage for QueryNodeInfoResponse {
             .collect();
         MqttMessage::new_with_req_info_body(
             mqtt_req_info,
-            Some(serde_json::to_value(&node_infos).unwrap()),
+            Some(PayloadBody::Nested {
+                body: serde_json::to_value(&node_infos).unwrap(),
+            }),
         )
     }
 }

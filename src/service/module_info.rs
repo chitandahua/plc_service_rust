@@ -2,10 +2,11 @@ use serde::Serialize;
 use std::sync::{mpsc, Arc};
 
 use crate::mqtt_handler::MqttTopicType;
-use crate::mqtt_message::MqttPayload;
-use crate::protocol::app_data::{self, AppData, ConfirmResponse, ModuleInfoRequest};
+use crate::mqtt_message::{MqttPayload, PayloadBody};
+use crate::protocol::app_data::{self, ConfirmResponse, ModuleInfoRequest};
 use crate::protocol::Frame;
 use crate::request_info::{self, MqttReqInfo, UartMessage};
+use crate::service::parse_response::UartResponse;
 use crate::service::IntoMqttMessage;
 use crate::{MqttMessage, MqttMsgHandler, ReqInfo, Result, APP_NAME};
 
@@ -18,10 +19,7 @@ impl ModuleInfo {
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
         let seq = message.frame.get_seq();
-        let app_data: AppData = message.frame.into_app_data();
-        let frame = app_data::ModuleInfoResponse::try_from(app_data)?;
-
-        let response = ModuleInfoResponse::from(frame);
+        let response = UartResponse::<app_data::ModuleInfoResponse>::try_from(message.frame)?;
 
         if message.req_info.is_init() {
             let response_frame = Frame::new_response(seq, None, ConfirmResponse::default());
@@ -29,10 +27,7 @@ impl ModuleInfo {
             let _ = uart_msg_sender.send(UartMessage::new(req_info, response_frame));
         } else {
             let mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
-            let payload = serde_json::to_value(response)?;
-            let payload = MqttPayload::new_with_token(mqtt_req_info.token(), Some(payload));
-            let message = MqttMessage::new(mqtt_req_info.topic(), payload.to_string());
-            let _ = sender.send(message);
+            let _ = sender.send(response.into_mqtt_message(mqtt_req_info));
         }
 
         Ok(())
@@ -116,10 +111,14 @@ impl From<app_data::ModuleInfoResponse> for ModuleInfoResponse {
 impl IntoMqttMessage for app_data::ModuleInfoResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
         let response = ModuleInfoResponse::from(self);
-
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(serde_json::to_value(response).unwrap()),
-        )
+        let payload = serde_json::to_value(response).unwrap();
+        let payload = MqttPayload::new_with_token(
+            mqtt_req_info.token(),
+            Some(PayloadBody::Nested { body: payload }),
+        );
+        let mut value = serde_json::to_value(payload).unwrap();
+        // modulePlug
+        value["modulePlug"] = "1".into();
+        MqttMessage::new(mqtt_req_info.topic(), value)
     }
 }

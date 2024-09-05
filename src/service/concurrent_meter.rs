@@ -8,7 +8,7 @@ use thiserror::Error;
 use timer::{Guard, Timer};
 
 use crate::mqtt_handler::MqttTopicType;
-use crate::mqtt_message::{MqttPayload, Status};
+use crate::mqtt_message::{MqttPayload, PayloadBody, Status};
 use crate::mqtt_topic::MqttTopic;
 use crate::protocol::app_data::{Address, ConcurrentReadMeterRequest, ConcurrentReadMeterResponse};
 use crate::protocol::{AddressField, Frame};
@@ -104,7 +104,7 @@ impl IntoMqttMessage for ConcurrentReadMeterResponse {
             ),
             false => MqttMessage::new_with_req_info_body(
                 mqtt_req_info,
-                Some(serde_json::to_value(extra_data).unwrap()),
+                Some(PayloadBody::Flat(serde_json::to_value(extra_data).unwrap())),
             ),
         }
     }

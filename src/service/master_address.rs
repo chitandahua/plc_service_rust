@@ -3,14 +3,12 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
 use crate::mqtt_handler::MqttTopicType;
+use crate::mqtt_message::{MqttMessage, PayloadBody};
 use crate::protocol::app_data::{AddressSetRequest, ConfirmResponse};
 use crate::protocol::Frame;
 use crate::request_info;
 use crate::service::{IntoMqttMessage, UartResponse};
-use crate::{
-    mqtt_message::MqttMessage, protocol::app_data::Address, MqttMsgHandler, ReqInfo, Result,
-    UartMessage, APP_NAME,
-};
+use crate::{protocol::app_data::Address, MqttMsgHandler, ReqInfo, Result, UartMessage, APP_NAME};
 
 pub struct MasterAddress {
     node_addr: NodeAddress,
@@ -56,7 +54,10 @@ impl MasterAddress {
             }
         );
 
-        mqtt_msg_sender.send(MqttMessage::new_with_msg_body(message, Some(response)))?;
+        mqtt_msg_sender.send(MqttMessage::new_with_msg_body(
+            message,
+            Some(PayloadBody::Flat(response)),
+        ))?;
 
         Ok(())
     }

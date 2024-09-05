@@ -16,6 +16,13 @@ pub enum Status {
     Failure,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PayloadBody {
+    Flat(Value),
+    Nested { body: Value },
+}
+
 pub const SUCCESS: &str = "OK";
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,14 +33,14 @@ pub struct MqttPayload {
     status: Option<Status>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    body: Option<Value>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    body: Option<PayloadBody>,
 }
 
 static TOKEN: AtomicU64 = AtomicU64::new(0);
 
 impl MqttPayload {
-    pub fn new(body: Option<Value>) -> Self {
+    pub fn new(body: Option<PayloadBody>) -> Self {
         Self {
             token: AtomicU64::fetch_add(&TOKEN, 1, std::sync::atomic::Ordering::Relaxed)
                 .to_string(),
@@ -62,7 +69,7 @@ impl MqttPayload {
         }
     }
 
-    pub fn new_with_token(token: impl ToString, body: Option<Value>) -> Self {
+    pub fn new_with_token(token: impl ToString, body: Option<PayloadBody>) -> Self {
         Self {
             token: token.to_string(),
             timestamp: get_timestamp(),
@@ -86,7 +93,7 @@ impl MqttPayload {
         }
     }
 
-    pub fn into_body(self) -> Option<Value> {
+    pub fn into_body(self) -> Option<PayloadBody> {
         self.body
     }
 
@@ -126,14 +133,14 @@ impl MqttMessage {
         }
     }
 
-    pub fn new_with_msg_body(message: MqttMessage, body: Option<Value>) -> Self {
+    pub fn new_with_msg_body(message: MqttMessage, body: Option<PayloadBody>) -> Self {
         let topic: MqttTopic = message.topic().try_into().unwrap();
         let payload = MqttPayload::new_with_token(message.get_token(), body);
 
         Self::new(topic.topic_transfer(), payload)
     }
 
-    pub fn new_with_req_info_body(mqtt_req_info: MqttReqInfo, body: Option<Value>) -> Self {
+    pub fn new_with_req_info_body(mqtt_req_info: MqttReqInfo, body: Option<PayloadBody>) -> Self {
         let payload = MqttPayload::new_with_token(mqtt_req_info.token(), body);
         Self::new(mqtt_req_info.topic(), payload)
     }

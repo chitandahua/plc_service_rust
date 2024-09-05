@@ -8,11 +8,11 @@ use crate::MqttTopic;
 use crate::Result;
 
 #[derive(Debug, Serialize, Deserialize, strum_macros::EnumString, strum_macros::Display)]
-#[strum(serialize_all = "UPPERCASE")]
 pub enum Status {
     #[strum(serialize = "OK")]
     #[serde(rename = "OK")]
     Success,
+    #[serde(rename = "FAILURE")]
     Failure,
 }
 
@@ -40,7 +40,7 @@ pub struct MqttPayload {
 static TOKEN: AtomicU64 = AtomicU64::new(0);
 
 impl MqttPayload {
-    pub fn new(body: Option<PayloadBody>) -> Self {
+    pub fn new_with_body(body: Option<PayloadBody>) -> Self {
         Self {
             token: AtomicU64::fetch_add(&TOKEN, 1, std::sync::atomic::Ordering::Relaxed)
                 .to_string(),
@@ -54,7 +54,7 @@ impl MqttPayload {
     pub fn new_with_token_result(token: impl ToString, result: Result<()>) -> Self {
         match result {
             Ok(_) => Self::new_with_token(token, None),
-            Err(e) => Self::new_with_token_status_reason(token, Status::Failure, e),
+            Err(e) => Self::new(token, Status::Failure, e, None),
         }
     }
 
@@ -79,17 +79,18 @@ impl MqttPayload {
         }
     }
 
-    pub fn new_with_token_status_reason(
+    pub fn new(
         token: impl ToString,
         status: Status,
         reason: impl ToString,
+        body: Option<PayloadBody>,
     ) -> Self {
         Self {
             token: token.to_string(),
             timestamp: get_timestamp(),
             status: Some(status),
             reason: Some(reason.to_string()),
-            body: None,
+            body,
         }
     }
 
@@ -151,11 +152,7 @@ impl MqttMessage {
         reason: impl ToString,
     ) -> Self {
         let topic: MqttTopic = message.topic().try_into().unwrap();
-        let payload = MqttPayload::new_with_token_status_reason(
-            message.get_token(),
-            status,
-            reason.to_string(),
-        );
+        let payload = MqttPayload::new(message.get_token(), status, reason.to_string(), None);
 
         Self::new(topic.topic_transfer(), payload)
     }
@@ -165,11 +162,7 @@ impl MqttMessage {
         status: Status,
         reason: impl ToString,
     ) -> Self {
-        let payload = MqttPayload::new_with_token_status_reason(
-            mqtt_req_info.token(),
-            status,
-            reason.to_string(),
-        );
+        let payload = MqttPayload::new(mqtt_req_info.token(), status, reason.to_string(), None);
         Self::new(mqtt_req_info.topic(), payload)
     }
 

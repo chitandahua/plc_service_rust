@@ -35,7 +35,7 @@ mod service;
 use service::{ConcurrentMeter, DeviceInfo, MasterAddress, ModuleInfo, ModuleService, NodeManage};
 
 mod uart_handler;
-use uart_handler::UartMsgHandler;
+use uart_handler::{UartMsgHandler, UartTimeoutHandler};
 
 pub type Error = anyhow::Error;
 
@@ -69,6 +69,11 @@ pub fn run(_args: Args) -> Result<()> {
     let services = module_init(&mut mqtt_msg_handler, timer.clone());
 
     // uart
+    let uart_timeout_handler = UartTimeoutHandler::new(
+        sender.clone(),
+        concurrent_msg_sender.clone(),
+        services.clone(),
+    );
     let uart_handler = UartMsgHandler::new(
         sender.clone(),
         uart_msg_sender.clone(),
@@ -77,7 +82,6 @@ pub fn run(_args: Args) -> Result<()> {
     );
     let sock_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 34567);
     let uart_agent = UartAgent::new(
-        sender.clone(),
         uart_msg_receiver,
         concurrent_msg_receiver,
         PathBuf::from(UART_CONFIG_PATH),
@@ -87,7 +91,7 @@ pub fn run(_args: Args) -> Result<()> {
     let handler = Handler::new(msg_sender, mqtt_msg_handler.subscribe_topics());
 
     let mut join_handler = mqtt_client.run(handler, receiver)?;
-    join_handler.extend(uart_agent.run(uart_handler, timer.clone())?);
+    join_handler.extend(uart_agent.run(uart_handler, timer.clone(), uart_timeout_handler)?);
     join_handler.extend(mqtt_msg_handler.run(services)?);
 
     let device_info = DeviceInfo::new();
@@ -135,4 +139,10 @@ pub fn get_version_info() {
         compile_time::date_str!(),
         time_string
     );
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum MqttResponseError {
+    #[error("request timeout")]
+    Timeout,
 }

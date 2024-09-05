@@ -1,9 +1,7 @@
-use crate::mqtt_message::{MqttMessage, Status};
 use crate::protocol::app_data::Afn;
 use crate::protocol::Frame;
-use crate::{MqttPayload, MqttTopic};
+use crate::MqttTopic;
 use std::any::Any;
-use std::sync::{mpsc, Arc};
 
 // TODO 使用enum？
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -64,28 +62,19 @@ impl MqttReqInfo {
     }
 }
 
-type MqttTimeoutCb = Arc<dyn Fn(MqttReqInfo, mpsc::Sender<MqttMessage>) + Send + Sync + 'static>;
-
 #[derive(Default)]
 pub struct ReqInfo {
     mqtt_req_info: Option<MqttReqInfo>,
     frame_key: FrameKey,
     seq_num: u8,
-    // 超时回调
-    pub timeout_cb: Option<MqttTimeoutCb>,
 }
 
 impl ReqInfo {
-    pub fn new(
-        frame: &Frame,
-        mqtt_req_info: Option<MqttReqInfo>,
-        timeout_cb: Option<MqttTimeoutCb>,
-    ) -> Self {
+    pub fn new(frame: &Frame, mqtt_req_info: Option<MqttReqInfo>) -> Self {
         ReqInfo {
             mqtt_req_info,
             frame_key: FrameKey::new(frame.afn().into(), frame.fn_num()),
             seq_num: frame.get_seq(),
-            timeout_cb,
         }
     }
 
@@ -94,7 +83,6 @@ impl ReqInfo {
         topic: impl AsRef<str>,
         token: impl ToString,
         extra_data: Option<Box<dyn Any + Send + Sync>>,
-        timeout_cb: Option<MqttTimeoutCb>,
     ) -> Self {
         ReqInfo {
             mqtt_req_info: Some(MqttReqInfo::new(
@@ -104,7 +92,6 @@ impl ReqInfo {
             )),
             frame_key: FrameKey::new(frame.afn().into(), frame.fn_num()),
             seq_num: frame.get_seq(),
-            timeout_cb,
         }
     }
 
@@ -138,15 +125,4 @@ impl UartMessage {
     pub fn new(req_info: ReqInfo, frame: Frame) -> Self {
         UartMessage { req_info, frame }
     }
-}
-
-pub fn timeout_handler(mqtt_req_info: MqttReqInfo, mqtt_msg_sender: mpsc::Sender<MqttMessage>) {
-    let payload = MqttPayload::new_with_token_status_reason(
-        mqtt_req_info.token(),
-        Status::Failure,
-        "request timeout",
-    );
-    mqtt_msg_sender
-        .send(MqttMessage::new(mqtt_req_info.topic(), payload))
-        .unwrap();
 }

@@ -8,8 +8,8 @@ use std::time::Duration;
 use timer::{Guard, Timer};
 use tracing::{debug, error, info, warn};
 
-use crate::mqtt_message::MqttMessage;
 use crate::serial_port::{StreamReader, StreamWriter};
+use crate::uart_handler::UartTimeoutHandler;
 use crate::{ReqInfo, UartMessage};
 use crate::{Result, UartPort};
 
@@ -26,7 +26,6 @@ struct UartReqInfo {
 }
 
 pub struct UartAgent {
-    mqtt_msg_sender: mpsc::Sender<MqttMessage>,
     uart_requeset_receiver: mpsc::Receiver<UartMessage>,
     concurrent_req_receiver: mpsc::Receiver<UartMessage>,
     cur_req_info: Arc<Mutex<UartReqInfo>>,
@@ -41,7 +40,6 @@ pub trait UartHandler {
 
 impl UartAgent {
     pub fn new(
-        mqtt_msg_sender: mpsc::Sender<MqttMessage>,
         uart_requeset_receiver: mpsc::Receiver<UartMessage>,
         concurrent_req_receiver: mpsc::Receiver<UartMessage>,
         uart_config: PathBuf,
@@ -50,7 +48,6 @@ impl UartAgent {
         let UartPort { reader, writer } = UartPort::new(uart_config, tcp_addr)?;
 
         Ok(UartAgent {
-            mqtt_msg_sender,
             uart_requeset_receiver,
             concurrent_req_receiver,
             cur_req_info: Arc::new(Mutex::new(UartReqInfo {
@@ -71,10 +68,10 @@ impl UartAgent {
         self,
         mut handler: impl UartHandler + Send + 'static,
         timer: Arc<Timer>,
+        uart_timeout_handler: UartTimeoutHandler,
     ) -> Result<Vec<JoinHandle<()>>> {
         debug!("uart_agent start");
         let UartAgent {
-            mqtt_msg_sender,
             uart_requeset_receiver,
             concurrent_req_receiver,
             cur_req_info,
@@ -83,10 +80,10 @@ impl UartAgent {
             config,
         } = self;
 
-        let mqtt_msg_sender_clone = mqtt_msg_sender.clone();
         let cur_req_info_clone = cur_req_info.clone();
         let concurrent_req_info = cur_req_info.clone();
         let cond_clone = cond.clone();
+        let uart_timeout_handler_clone = uart_timeout_handler.clone();
 
         let uart_agent_thread = thread::spawn(move || {
             const MAX_RETRY: usize = 1; // 不重试
@@ -120,12 +117,9 @@ impl UartAgent {
 
                     // 超时处理
                     let req = lock.req_info.take();
-                    if let Some(mut req) = req {
+                    if let Some(req) = req {
                         warn!("request seq {} timeout", req.seq_num());
-                        let cb = req.timeout_cb.take();
-                        if let Some(cb) = cb {
-                            cb(req.into_mqtt_req_info().unwrap(), mqtt_msg_sender.clone());
-                        }
+                        let _ = uart_timeout_handler.handle_timeout(req);
                     }
                 }
             }
@@ -135,32 +129,21 @@ impl UartAgent {
 
         let uart_concurrent_thread = thread::spawn(move || loop {
             while let Ok(req_msg) = concurrent_req_receiver.recv() {
-                let UartMessage {
-                    mut req_info,
-                    frame,
-                } = req_msg;
+                let UartMessage { req_info, frame } = req_msg;
                 debug!("recv concurrent request frame {}", frame.to_hex_string());
 
                 let seq = frame.get_seq();
                 let bytes = Into::<Vec<u8>>::into(frame);
-                let timeout_cb = req_info.timeout_cb.take();
                 let concurrent_req_info_clone = concurrent_req_info.clone();
-                let mqtt_msg_sender = mqtt_msg_sender_clone.clone();
+                let uart_timeout_handler = uart_timeout_handler_clone.clone();
                 let guard = timer.schedule_with_delay(config.concurrent_timeout, move || {
-                    let mqtt_req_info = {
+                    warn!("concurrent request seq {} timeout", seq);
+                    let req_info = {
                         let mut lock = concurrent_req_info_clone.lock().unwrap();
-                        // 若超时 且当前只有mqtt会并行请求 故全unwrap
-                        lock.concurrent_req_info
-                            .remove(&seq)
-                            .unwrap()
-                            .0
-                            .into_mqtt_req_info()
-                            .unwrap()
+                        // 若超时 且当前只有mqtt会并行请求 故unwrap
+                        lock.concurrent_req_info.remove(&seq).unwrap().0
                     };
-                    // 其实也可以unwrap
-                    if let Some(cb) = &timeout_cb {
-                        cb(mqtt_req_info, mqtt_msg_sender.clone());
-                    }
+                    let _ = uart_timeout_handler.handle_timeout(req_info);
                 });
                 {
                     let mut lock = concurrent_req_info.lock().unwrap();
@@ -185,7 +168,7 @@ impl UartAgent {
                         let mut is_serial_req = false;
                         let mut lock = cur_req_info_clone.lock().unwrap();
                         let info = if response.is_slave_report() {
-                            Some(ReqInfo::new(&response, None, None))
+                            Some(ReqInfo::new(&response, None))
                         } else if let Some(concurrent_req) =
                             lock.concurrent_req_info.remove(&response.get_seq())
                         {

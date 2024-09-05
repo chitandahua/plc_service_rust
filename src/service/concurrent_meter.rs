@@ -15,7 +15,7 @@ use crate::protocol::{AddressField, Frame};
 use crate::request_info::{MqttReqInfo, ReqInfo, UartMessage};
 use crate::service::parse_response::uart_response_mqtt_handler;
 use crate::service::IntoMqttMessage;
-use crate::{MqttMessage, MqttMsgHandler, Result, APP_NAME};
+use crate::{MqttMessage, MqttMsgHandler, MqttResponseError, Result, APP_NAME};
 
 struct SampleCache {
     is_waiting_response: bool,
@@ -74,6 +74,8 @@ enum ConcurrentMeterError {
     AddrLimit(usize),
     #[error("addr queue size exceed limit {0}")]
     QueueLimit(usize),
+    #[error("Meter reading failed. Cco response data empty")]
+    MeterReading,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -95,12 +97,11 @@ impl IntoMqttMessage for ConcurrentReadMeterResponse {
             .downcast::<SamplePayload>()
             .unwrap();
         extra_data.data = hex::encode(self.message);
-        // TODO
         match extra_data.data.is_empty() {
             true => MqttMessage::new_with_req_info_status_reason(
                 mqtt_req_info,
                 Status::Failure,
-                "Meter reading failed. Cco response data empty",
+                ConcurrentMeterError::MeterReading,
             ),
             false => MqttMessage::new_with_req_info_body(
                 mqtt_req_info,
@@ -143,19 +144,33 @@ impl ConcurrentMeter {
         })
     }
 
-    fn concurrent_meter_timeout(
-        mqtt_req_info: MqttReqInfo,
-        mqtt_msg_sender: mpsc::Sender<MqttMessage>,
-    ) {
-        // TODO
-        let payload = MqttPayload::new_with_token_status_reason(
+    pub fn uart_meter_reading_timeout(
+        &self,
+        mut mqtt_req_info: MqttReqInfo,
+        master_address: Address,
+        concurrent_msg_sender: &mpsc::Sender<UartMessage>,
+        mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
+    ) -> Result<()> {
+        let extra_data = mqtt_req_info
+            .get_extra_data()
+            .unwrap()
+            .downcast::<SamplePayload>()
+            .unwrap();
+        let acq_addr = extra_data.acq_addr.clone();
+        let body = serde_json::to_value(extra_data).unwrap();
+
+        let payload = MqttPayload::new(
             mqtt_req_info.token(),
             Status::Failure,
-            "request timeout",
+            MqttResponseError::Timeout,
+            Some(PayloadBody::Flat(body)),
         );
+
         mqtt_msg_sender
             .send(MqttMessage::new(mqtt_req_info.topic(), payload))
             .unwrap();
+
+        self.handle_next_request(acq_addr, master_address, concurrent_msg_sender)
     }
 
     fn mqtt_meter_reading_handler(
@@ -189,7 +204,6 @@ impl ConcurrentMeter {
             response_topic,
             message.get_token(),
             Some(extra_data),
-            Some(Arc::new(Self::concurrent_meter_timeout)),
         );
 
         concurrent_msg_sender.send(UartMessage::new(req_info, frame))?;

@@ -53,10 +53,11 @@ pub trait IntoMqttMessage {
 
 impl IntoMqttMessage for ConfirmResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        let payload = MqttPayload::new_with_token_status_reason(
+        let payload = MqttPayload::new(
             mqtt_req_info.token(),
             Status::Success,
             crate::mqtt_message::SUCCESS,
+            None,
         );
         MqttMessage::new(mqtt_req_info.topic(), payload)
     }
@@ -64,10 +65,11 @@ impl IntoMqttMessage for ConfirmResponse {
 
 impl IntoMqttMessage for DenyResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        let payload = MqttPayload::new_with_token_status_reason(
+        let payload = MqttPayload::new(
             mqtt_req_info.token(),
             Status::Failure,
             self.error_code(),
+            None,
         );
         MqttMessage::new(mqtt_req_info.topic(), payload)
     }

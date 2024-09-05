@@ -1,12 +1,12 @@
 use std::sync::mpsc;
 use tracing::debug;
 
+use crate::mqtt_message::Status;
 use crate::protocol::app_data::Afn;
+use crate::request_info::{MqttReqInfo, ReqInfo};
 use crate::service::ModuleService;
-use crate::MqttMessage;
-use crate::{Result, UartHandler, UartMessage};
-
-use crate::ModuleInfo;
+use crate::{ModuleInfo, MqttMessage, MqttPayload};
+use crate::{MqttResponseError, Result, UartHandler, UartMessage};
 
 pub struct UartMsgHandler {
     mqtt_msg_sender: mpsc::Sender<MqttMessage>,
@@ -76,6 +76,59 @@ impl UartHandler for UartMsgHandler {
                 )?;
             }
             _ => todo!(),
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct UartTimeoutHandler {
+    mqtt_msg_sender: mpsc::Sender<MqttMessage>,
+    concurrent_msg_sender: mpsc::Sender<UartMessage>,
+    services: ModuleService,
+}
+
+impl UartTimeoutHandler {
+    pub fn new(
+        mqtt_msg_sender: mpsc::Sender<MqttMessage>,
+        concurrent_msg_sender: mpsc::Sender<UartMessage>,
+        services: ModuleService,
+    ) -> Self {
+        Self {
+            mqtt_msg_sender,
+            concurrent_msg_sender,
+            services,
+        }
+    }
+
+    fn mqtt_timeout_cb(&self, mqtt_req_info: MqttReqInfo) {
+        let payload = MqttPayload::new(
+            mqtt_req_info.token(),
+            Status::Failure,
+            MqttResponseError::Timeout,
+            None,
+        );
+        self.mqtt_msg_sender
+            .send(MqttMessage::new(mqtt_req_info.topic(), payload))
+            .unwrap();
+    }
+
+    pub fn handle_timeout(&self, req_info: ReqInfo) -> Result<()> {
+        match req_info.frame_key().to_tuple() {
+            (Afn::CocurrentReadMeter, 1) => {
+                let master_address = self.services.master_address.get_master_address();
+                self.services.concurrent_meter.uart_meter_reading_timeout(
+                    req_info.into_mqtt_req_info().unwrap(),
+                    master_address,
+                    &self.concurrent_msg_sender,
+                    &self.mqtt_msg_sender,
+                )?;
+            }
+            _ => match req_info.into_mqtt_req_info() {
+                Some(mqtt_req_info) => self.mqtt_timeout_cb(mqtt_req_info),
+                None => {}
+            },
         }
 
         Ok(())

@@ -1,12 +1,10 @@
 use serde_json::{json, Value};
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Mutex};
 
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::{MqttMessage, PayloadBody};
 use crate::protocol::app_data::{AddressSetRequest, ConfirmResponse};
 use crate::protocol::Frame;
-use crate::request_info;
 use crate::service::{IntoMqttMessage, UartResponse};
 use crate::{protocol::app_data::Address, MqttMsgHandler, ReqInfo, Result, UartMessage, APP_NAME};
 
@@ -77,7 +75,6 @@ impl MasterAddress {
             message.topic(),
             payload["token"].as_str().unwrap(),
             Some(Box::new(address_clone)),
-            Some(Arc::new(request_info::timeout_handler)),
         );
         uart_msg_sender.send(UartMessage::new(req_info, frame))?;
 

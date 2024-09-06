@@ -324,7 +324,12 @@ impl Frame {
     }
 
     pub fn to_hex_string(&self) -> String {
-        hex::encode(self.to_bytes())
+        //hex::encode(self.to_bytes())
+        self.to_bytes()
+            .iter()
+            .map(|b| format!("{:02X}", b))
+            .collect::<Vec<String>>()
+            .join(" ")
     }
 }
 

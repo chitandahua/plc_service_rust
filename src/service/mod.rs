@@ -19,6 +19,9 @@ pub use node_manage::NodeManage;
 mod parse_response;
 pub use parse_response::UartResponse;
 
+mod plc_init;
+pub use plc_init::PlcInit;
+
 use std::sync::Arc;
 
 use crate::mqtt_message::Status;

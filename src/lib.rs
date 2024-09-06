@@ -32,7 +32,9 @@ mod uart_agent;
 use uart_agent::{UartAgent, UartHandler};
 
 mod service;
-use service::{ConcurrentMeter, DeviceInfo, MasterAddress, ModuleInfo, ModuleService, NodeManage};
+use service::{
+    ConcurrentMeter, DeviceInfo, MasterAddress, ModuleInfo, ModuleService, NodeManage, PlcInit,
+};
 
 mod uart_handler;
 use uart_handler::{UartMsgHandler, UartTimeoutHandler};
@@ -68,6 +70,12 @@ pub fn run(_args: Args) -> Result<()> {
     let timer = Arc::new(Timer::new());
     let services = module_init(&mut mqtt_msg_handler, timer.clone());
 
+    let plc_init = Arc::new(PlcInit::new(
+        uart_msg_sender.clone(),
+        services.clone(),
+        6000,
+        1,
+    ));
     // uart
     let uart_timeout_handler = UartTimeoutHandler::new(
         sender.clone(),
@@ -79,6 +87,7 @@ pub fn run(_args: Args) -> Result<()> {
         uart_msg_sender.clone(),
         concurrent_msg_sender.clone(),
         services.clone(),
+        plc_init.clone(),
     );
     let sock_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 34567);
     let uart_agent = UartAgent::new(
@@ -96,6 +105,8 @@ pub fn run(_args: Args) -> Result<()> {
 
     let device_info = DeviceInfo::new();
     device_info.run(&sender)?;
+
+    plc_init.run()?;
 
     for handler in join_handler {
         handler.join().unwrap();

@@ -160,7 +160,8 @@ impl MqttMsgHandler {
             if let Some(sub_topic) = sub_topic {
                 let result = match sub_topic.mqtt_topic_type {
                     MqttTopicType::GetModuleInfo => {
-                        ModuleInfo::mqtt_get_module_info(message, &uart_msg_sender)
+                        ModuleInfo::mqtt_get_module_info(message, &uart_msg_sender);
+                        Ok(())
                     }
                     MqttTopicType::GetMasterAddress => services
                         .master_address

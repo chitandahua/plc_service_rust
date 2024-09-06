@@ -280,7 +280,12 @@ impl NodeManage {
         };
         drop(node_config); // 释放锁
 
-        let result = self.operate_acq_files::<T>(app, &message, node_infos, uart_msg_sender);
+        let result = self.operate_acq_files::<T>(
+            app,
+            Some(message.to_mqtt_req_info()),
+            node_infos,
+            uart_msg_sender,
+        );
         let response = match result {
             Ok(_) => MqttMessage::new_with_msg_body(message, None),
             Err(e) => MqttMessage::new_with_msg_status_reason(message, Status::Failure, e),
@@ -331,17 +336,15 @@ impl NodeManage {
     fn operate_acq_files<T: AcqFilesOperation>(
         &self,
         app: &str,
-        message: &MqttMessage,
+        mqtt_req_info: Option<MqttReqInfo>,
         node_infos: Vec<NodeInfo>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
         for (index, nodes) in node_infos.chunks(ACQ_FILES_CHUNK_SIZE).enumerate() {
-            match self.operate_chunk_acq_files::<T>(
-                app,
-                Some(message.to_mqtt_req_info()),
-                nodes,
-                uart_msg_sender,
-            ) {
+            let mqtt_req_info = mqtt_req_info.as_ref().map(|mqtt_req_info| {
+                MqttReqInfo::new(mqtt_req_info.topic(), mqtt_req_info.token(), None)
+            });
+            match self.operate_chunk_acq_files::<T>(app, mqtt_req_info, nodes, uart_msg_sender) {
                 Ok(0) => {
                     info!(
                         "node index[{}-{}) no need to operate uart",
@@ -428,7 +431,7 @@ impl NodeManage {
     }
 
     // 仅初始化时调用
-    pub fn _clear_acq_files(&self, uart_msg_sender: &mpsc::Sender<UartMessage>) -> Result<()> {
+    pub fn clear_acq_files(&self, uart_msg_sender: &mpsc::Sender<UartMessage>) -> Result<()> {
         let frame = Frame::new_request(None, InitRequest::new(InitOperation::Params));
         let req_info = ReqInfo::new(&frame, None);
 
@@ -437,8 +440,14 @@ impl NodeManage {
         self.wait_operation_result(node_config)
     }
 
-    pub fn _uart_clear_acq_files(&self, message: UartMessage) -> Result<()> {
+    pub fn uart_clear_acq_files(&self, message: UartMessage) -> Result<()> {
         self.uart_operate_acq_files::<ClearAcqFiles>(message)
+    }
+
+    pub fn load_config(&self, _uart_msg_sender: &mpsc::Sender<UartMessage>) -> Result<()> {
+        //self.operate_acq_files::<T>(app, None, node_infos, uart_msg_sender);
+
+        Ok(())
     }
 }
 

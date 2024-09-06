@@ -4,46 +4,64 @@ use std::sync::mpsc;
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::{MqttPayload, PayloadBody};
 use crate::protocol::app_data::{self, ConfirmResponse, ModuleInfoRequest};
-use crate::protocol::Frame;
+use crate::protocol::{Address, Frame};
 use crate::request_info::{MqttReqInfo, UartMessage};
-use crate::service::parse_response::UartResponse;
+use crate::service::parse_response::{uart_response_mqtt_handler, UartResponse};
 use crate::service::IntoMqttMessage;
 use crate::{MqttMessage, MqttMsgHandler, ReqInfo, Result, APP_NAME};
 
 pub struct ModuleInfo;
 
 impl ModuleInfo {
-    pub fn module_info_response(
+    pub fn slave_module_info_report(
         message: UartMessage,
-        sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
-    ) -> Result<()> {
+    ) -> Result<Address> {
         let seq = message.frame.get_seq();
         let response = UartResponse::<app_data::ModuleInfoResponse>::try_from(message.frame)?;
 
-        if message.req_info.is_init() {
-            let response_frame = Frame::new_response(seq, None, ConfirmResponse::default());
-            let req_info = ReqInfo::new(&response_frame, None);
-            let _ = uart_msg_sender.send(UartMessage::new(req_info, response_frame));
-        } else {
-            let mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
-            let _ = sender.send(response.into_mqtt_message(mqtt_req_info));
-        }
+        match response {
+            UartResponse::Deny(_) => unreachable!(),
+            UartResponse::Normal(response) => {
+                let response_frame = Frame::new_response(seq, None, ConfirmResponse::default());
+                let req_info = ReqInfo::new(&response_frame, None);
+                let _ = uart_msg_sender.send(UartMessage::new(req_info, response_frame));
 
-        Ok(())
+                Ok(response.main_node_addr)
+            }
+        }
     }
 
-    pub fn mqtt_get_module_info(
-        message: MqttMessage,
-        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    pub fn init_module_info_response(message: UartMessage) -> Result<Address> {
+        let response = UartResponse::<app_data::ModuleInfoResponse>::try_from(message.frame)?;
+
+        match response {
+            UartResponse::Deny(response) => Err(response.into()),
+            UartResponse::Normal(response) => Ok(response.main_node_addr),
+        }
+    }
+
+    pub fn module_info_response(
+        message: UartMessage,
+        sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
+        uart_response_mqtt_handler::<app_data::ModuleInfoResponse>(message, sender)
+    }
+
+    pub fn get_module_info(
+        mqtt_req_info: Option<MqttReqInfo>,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) {
         let frame = Frame::new_request(None, ModuleInfoRequest);
-        let req_info = ReqInfo::new_with_mqtt(&frame, message.topic(), message.get_token(), None);
+        let req_info = ReqInfo::new(&frame, mqtt_req_info);
         uart_msg_sender
             .send(UartMessage::new(req_info, frame))
             .unwrap();
+    }
 
-        Ok(())
+    pub fn mqtt_get_module_info(message: MqttMessage, uart_msg_sender: &mpsc::Sender<UartMessage>) {
+        let mqtt_req_info = MqttReqInfo::new(message.topic(), message.get_token(), None);
+        Self::get_module_info(Some(mqtt_req_info), uart_msg_sender)
     }
 
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {

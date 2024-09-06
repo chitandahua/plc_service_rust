@@ -5,6 +5,7 @@ use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::{MqttMessage, PayloadBody};
 use crate::protocol::app_data::{AddressSetRequest, ConfirmResponse};
 use crate::protocol::Frame;
+use crate::request_info::MqttReqInfo;
 use crate::service::{IntoMqttMessage, UartResponse};
 use crate::{protocol::app_data::Address, MqttMsgHandler, ReqInfo, Result, UartMessage, APP_NAME};
 
@@ -60,25 +61,45 @@ impl MasterAddress {
         Ok(())
     }
 
+    fn set_address(
+        address: Address,
+        mqtt_req_info: Option<MqttReqInfo>,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) {
+        let request = AddressSetRequest::new(address);
+        let frame = Frame::new_request(None, request);
+        let req_info = ReqInfo::new(&frame, mqtt_req_info);
+        uart_msg_sender
+            .send(UartMessage::new(req_info, frame))
+            .unwrap();
+    }
+
     pub fn mqtt_set_address(
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
         let payload: Value = serde_json::from_str(message.payload()).unwrap();
         let address = Address::from(payload[MASTER_NODE].as_str().unwrap());
-        let address_clone = address.clone();
-
-        let request = AddressSetRequest::new(address);
-        let frame = Frame::new_request(None, request);
-        let req_info = ReqInfo::new_with_mqtt(
-            &frame,
+        let mqtt_req_info = MqttReqInfo::new(
             message.topic(),
             payload["token"].as_str().unwrap(),
-            Some(Box::new(address_clone)),
+            Some(Box::new(address.clone())),
         );
-        uart_msg_sender.send(UartMessage::new(req_info, frame))?;
+        Self::set_address(address, Some(mqtt_req_info), uart_msg_sender);
 
         Ok(())
+    }
+
+    pub fn init_set_address(
+        &self,
+        master_address: Address,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) {
+        Self::set_address(master_address, None, uart_msg_sender);
+    }
+
+    pub fn init_set_address_response(&self, message: UartMessage) -> Result<()> {
+        UartResponse::<ConfirmResponse>::try_from(message.frame)?.into()
     }
 
     pub fn uart_set_address(
@@ -87,29 +108,22 @@ impl MasterAddress {
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
         let response = UartResponse::<ConfirmResponse>::try_from(message.frame)?;
-        let is_init = message.req_info.is_init();
-
-        match is_init {
-            true => {} // TODO
-            false => {
-                let mut mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
-                let message = match response {
-                    UartResponse::Normal(response) => {
-                        {
-                            let mut address = self.node_addr.address.lock().unwrap();
-                            *address = *mqtt_req_info
-                                .get_extra_data()
-                                .unwrap()
-                                .downcast::<Address>()
-                                .unwrap();
-                        }
-                        response.into_mqtt_message(mqtt_req_info)
-                    }
-                    UartResponse::Deny(response) => response.into_mqtt_message(mqtt_req_info),
-                };
-                mqtt_msg_sender.send(message)?;
+        let mut mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
+        let message = match response {
+            UartResponse::Normal(response) => {
+                {
+                    let mut address = self.node_addr.address.lock().unwrap();
+                    *address = *mqtt_req_info
+                        .get_extra_data()
+                        .unwrap()
+                        .downcast::<Address>()
+                        .unwrap();
+                }
+                response.into_mqtt_message(mqtt_req_info)
             }
-        }
+            UartResponse::Deny(response) => response.into_mqtt_message(mqtt_req_info),
+        };
+        mqtt_msg_sender.send(message)?;
 
         Ok(())
     }

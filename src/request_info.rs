@@ -33,10 +33,14 @@ pub struct MqttReqInfo {
 }
 
 impl MqttReqInfo {
-    pub fn new(topic: &str, token: String, extra_data: Option<Box<dyn Any + Send + Sync>>) -> Self {
+    pub fn new(
+        topic: &str,
+        token: impl ToString,
+        extra_data: Option<Box<dyn Any + Send + Sync>>,
+    ) -> Self {
         MqttReqInfo {
             topic: MqttTopic::transfer(topic),
-            token,
+            token: token.to_string(),
             extra_data,
         }
     }

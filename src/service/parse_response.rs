@@ -1,7 +1,7 @@
 use std::sync::mpsc;
 
 use crate::mqtt_message::MqttMessage;
-use crate::protocol::app_data::{ConfirmResponse, DenyResponse};
+use crate::protocol::app_data::DenyResponse;
 use crate::protocol::{AppData, Frame};
 use crate::request_info::{MqttReqInfo, UartMessage};
 use crate::service::IntoMqttMessage;
@@ -42,10 +42,16 @@ where
     }
 }
 
-impl From<UartResponse<ConfirmResponse>> for Result<()> {
-    fn from(value: UartResponse<ConfirmResponse>) -> Self {
+impl From<DenyResponse> for anyhow::Error {
+    fn from(value: DenyResponse) -> Self {
+        anyhow::anyhow!(value.error_code())
+    }
+}
+
+impl<T> From<UartResponse<T>> for Result<()> {
+    fn from(value: UartResponse<T>) -> Self {
         match value {
-            UartResponse::Deny(response) => Err(anyhow::anyhow!(response.error_code())),
+            UartResponse::Deny(response) => Err(response.into()),
             UartResponse::Normal(_) => Ok(()),
         }
     }

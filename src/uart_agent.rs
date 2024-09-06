@@ -90,6 +90,7 @@ impl UartAgent {
             while let Ok(req_msg) = uart_requeset_receiver.recv() {
                 let UartMessage { req_info, frame } = req_msg;
                 debug!("recv request frame {}", frame.to_hex_string());
+                let is_response = frame.is_master_response();
 
                 let mut cnt = 0;
                 {
@@ -105,6 +106,10 @@ impl UartAgent {
                             }
                         };
 
+                        if is_response {
+                            break;
+                        }
+
                         let result = cond
                             .wait_timeout_while(lock, config.timeout, |req| req.req_info.is_some())
                             .unwrap();
@@ -113,6 +118,10 @@ impl UartAgent {
                             break;
                         }
                         cnt += 1;
+                    }
+
+                    if is_response {
+                        continue;
                     }
 
                     // 超时处理

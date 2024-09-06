@@ -1,0 +1,135 @@
+use std::sync::{mpsc, Condvar, Mutex};
+use std::time::Duration;
+
+use crate::protocol::Address;
+use crate::request_info::UartMessage;
+use crate::{ModuleService, Result};
+
+use super::ModuleInfo;
+
+enum InitEvent {
+    Result(Result<()>),
+    Address(Address),
+}
+
+#[derive(Default)]
+struct PlcInitResult {
+    event: Option<InitEvent>,
+}
+
+pub struct PlcInit {
+    uart_msg_sender: mpsc::Sender<UartMessage>,
+    services: ModuleService,
+    init_result: Mutex<PlcInitResult>,
+    cond: Condvar,
+    timeout: Duration,
+    init_timeout: Duration,
+}
+
+impl PlcInit {
+    pub fn new(
+        uart_msg_sender: mpsc::Sender<UartMessage>,
+        services: ModuleService,
+        timeout: u64,
+        init_timeout: u64,
+    ) -> Self {
+        Self {
+            uart_msg_sender,
+            services,
+            init_result: Mutex::new(PlcInitResult::default()),
+            cond: Condvar::new(),
+            timeout: Duration::from_millis(timeout),
+            init_timeout: Duration::from_secs(init_timeout),
+        }
+    }
+
+    fn notify_event(&self, event: InitEvent) {
+        let mut res = self.init_result.lock().unwrap();
+        res.event = Some(event);
+        self.cond.notify_one();
+    }
+
+    pub fn notify(&self, result: Result<()>) {
+        self.notify_event(InitEvent::Result(result));
+    }
+
+    pub fn update_address(&self, address: Address) {
+        self.notify_event(InitEvent::Address(address));
+    }
+
+    fn wait_for_event(&self, timeout: Duration) -> Result<InitEvent> {
+        let mut res = self.init_result.lock().unwrap();
+        let result = self
+            .cond
+            .wait_timeout_while(res, timeout, |r| r.event.is_none())
+            .unwrap();
+        res = result.0;
+        if result.1.timed_out() {
+            return Err(anyhow::anyhow!("timeout"));
+        }
+
+        Ok(res.event.take().unwrap())
+    }
+
+    pub fn wait_result(&self) -> Result<()> {
+        match self.wait_for_event(self.timeout)? {
+            InitEvent::Result(result) => result,
+            _ => Err(anyhow::anyhow!("Unexpected event type")),
+        }
+    }
+
+    pub fn wait_address(&self) -> Result<Address> {
+        match self.wait_for_event(self.init_timeout)? {
+            InitEvent::Address(address) => Ok(address),
+            _ => Err(anyhow::anyhow!("Unexpected event type")),
+        }
+    }
+
+    pub fn get_master_address(&self) -> Result<Address> {
+        let retry_count = 3;
+        for i in 0..retry_count {
+            ModuleInfo::get_module_info(None, &self.uart_msg_sender);
+            match self.wait_address() {
+                Ok(address) => {
+                    return Ok(address);
+                }
+                Err(e) => {
+                    if i == retry_count - 1 {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        unreachable!();
+    }
+
+    pub fn run(&self) -> Result<()> {
+        // 等待模块信息上报
+        let master_address = self.services.master_address.get_master_address();
+        let address_match = match self.wait_address() {
+            Ok(address) => master_address == address,
+            Err(_) => self.get_master_address()? == master_address,
+        };
+
+        // 如果地址不匹配，重新设置
+        if !address_match {
+            self.services
+                .master_address
+                .init_set_address(master_address, &self.uart_msg_sender);
+            self.wait_result()?;
+        }
+
+        // 清空档案
+        self.services
+            .node_manage
+            .clear_acq_files(&self.uart_msg_sender)?;
+
+        // 加载档案
+        self.services
+            .node_manage
+            .load_config(&self.uart_msg_sender)?;
+
+        Ok(())
+    }
+}

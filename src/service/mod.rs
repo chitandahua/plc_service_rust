@@ -22,6 +22,9 @@ pub use parse_response::UartResponse;
 mod plc_init;
 pub use plc_init::PlcInit;
 
+mod plc_device;
+pub use plc_device::PlcDevice;
+
 use std::sync::Arc;
 
 use crate::mqtt_message::Status;

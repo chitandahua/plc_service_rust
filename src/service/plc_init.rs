@@ -32,16 +32,16 @@ impl PlcInit {
     pub fn new(
         uart_msg_sender: mpsc::Sender<UartMessage>,
         services: ModuleService,
-        timeout: u64,
-        init_timeout: u64,
+        timeout: u32,
+        init_timeout: u32,
     ) -> Self {
         Self {
             uart_msg_sender,
             services,
             init_result: Mutex::new(PlcInitResult::default()),
             cond: Condvar::new(),
-            timeout: Duration::from_millis(timeout),
-            init_timeout: Duration::from_secs(init_timeout),
+            timeout: Duration::from_millis(timeout as u64),
+            init_timeout: Duration::from_secs(init_timeout as u64),
             init_flag: Arc::new(AtomicBool::new(false)),
         }
     }

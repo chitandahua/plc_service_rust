@@ -1,5 +1,6 @@
 use clap::Parser;
 use lazy_static::lazy_static;
+use std::{net::SocketAddr, path::PathBuf};
 
 lazy_static! {
     static ref VERSION: &'static str =
@@ -21,6 +22,36 @@ Commit Branch:       {:?}
 }
 
 #[derive(Parser, Debug)]
+pub struct ConcurrentLimit {
+    /// Concurrency limit
+    #[arg(short = 'c')]
+    pub concurrency: Option<usize>,
+
+    /// Number of requests per second
+    #[arg(short = 'r', value_name = "NUM:PER")]
+    pub requests_per_second: Option<String>,
+
+    /// Concurrent response timeout (s)
+    #[arg(short = 't')]
+    pub timeout: Option<u32>,
+}
+
+#[derive(Parser, Debug)]
+pub struct MeterReading {
+    /// Queue size per meter address
+    #[arg(short = 'q')]
+    pub queue_size: Option<usize>,
+
+    /// Max concurrent address number
+    #[arg(short = 'm')]
+    pub max_addr_num: Option<usize>,
+
+    /// Cache queue aging time (min)
+    #[arg(short = 'a')]
+    pub aging_time: Option<u32>,
+}
+
+#[derive(Parser, Debug)]
 #[clap(
     about,
     version(*VERSION),
@@ -37,6 +68,28 @@ pub struct Args {
     pub ver: bool,
 
     /// output log to syslog
-    #[arg(short)]
+    #[arg(long)]
     pub syslog: bool,
+
+    /// save node data to file instead of sqlite database
+    #[arg(short, value_parser = clap::value_parser!(PathBuf))]
+    pub file: Option<PathBuf>,
+
+    /// init timeout(s)
+    #[arg(short)]
+    pub init_timeout: Option<u32>,
+
+    /// uart request timeout(ms)
+    #[arg(short)]
+    pub uart_timeout: Option<u32>,
+
+    /// uart spy address (ip:port)
+    #[arg(short = 's', value_parser = clap::value_parser!(SocketAddr))]
+    pub tcp_addr: Option<SocketAddr>,
+
+    #[command(flatten)]
+    pub concurrent_limit: ConcurrentLimit,
+
+    #[command(flatten)]
+    pub meter_reading: MeterReading,
 }

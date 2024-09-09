@@ -1,0 +1,7 @@
+{
+    "baudrate": 9600,
+    "parity": "E",
+    "port": "/dev/plctty",
+    "stopbit": 1,
+    "wordlength": 8
+}

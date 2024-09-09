@@ -1,0 +1,13 @@
+{
+  "init_timeout": 60,
+  "uart_timeout": 6000,
+  "concurrent": {
+    "concurrency_limit": 128,
+    "timeout": 60
+  },
+  "meter_reading": {
+    "cache_queue_size": 10,
+    "concurrent_addr": 32,
+    "queue_aging_time": 30
+  }
+}

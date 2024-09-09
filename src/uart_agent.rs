@@ -45,6 +45,8 @@ impl UartAgent {
         concurrent_req_receiver: mpsc::Receiver<UartMessage>,
         uart_config: PathBuf,
         tcp_addr: Option<SocketAddr>,
+        uart_timeout: u32,
+        concurrent_timeout: u32,
     ) -> Result<Self> {
         let UartPort { reader, writer } = UartPort::new(uart_config, tcp_addr)?;
 
@@ -59,8 +61,8 @@ impl UartAgent {
             cond: Arc::new(Condvar::new()),
             reader,
             config: UartConfig {
-                timeout: Duration::from_millis(6000),
-                concurrent_timeout: chrono::Duration::seconds(60),
+                timeout: Duration::from_millis(uart_timeout as u64),
+                concurrent_timeout: chrono::Duration::seconds(concurrent_timeout as i64),
             },
         })
     }

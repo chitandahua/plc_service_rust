@@ -7,6 +7,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use thiserror::Error;
 use timer::{Guard, Timer};
 
+use crate::config::MeterReadingConfig;
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::{MqttPayload, PayloadBody, Status};
 use crate::mqtt_topic::MqttTopic;
@@ -37,13 +38,6 @@ impl SampleCache {
     }
 }
 
-#[derive(Serialize, Debug)]
-struct MeterConfig {
-    queue_aging_time: i64,
-    cache_queue_size: usize,
-    concurrent_addr: usize,
-}
-
 #[derive(Clone)]
 pub struct ConcurrentMeter {
     concurrent_meter: Arc<ConcurrentMeterManager>,
@@ -51,18 +45,14 @@ pub struct ConcurrentMeter {
 }
 
 struct ConcurrentMeterManager {
-    meter_config: MeterConfig,
+    meter_config: MeterReadingConfig,
     sample_cache: Mutex<HashMap<String, SampleCache>>,
 }
 
 impl ConcurrentMeterManager {
-    fn new() -> Self {
+    fn new(meter_config: MeterReadingConfig) -> Self {
         Self {
-            meter_config: MeterConfig {
-                cache_queue_size: 10,
-                concurrent_addr: 32,
-                queue_aging_time: 1,
-            },
+            meter_config,
             sample_cache: Mutex::new(HashMap::new()),
         }
     }
@@ -112,11 +102,11 @@ impl IntoMqttMessage for ConcurrentReadMeterResponse {
 }
 
 impl ConcurrentMeter {
-    pub fn new(timer: &Timer) -> Self {
-        let concurrent_meter = Arc::new(ConcurrentMeterManager::new());
+    pub fn new(timer: &Timer, meter_config: MeterReadingConfig) -> Self {
+        let concurrent_meter = Arc::new(ConcurrentMeterManager::new(meter_config));
         let concurrent_meter_clone = concurrent_meter.clone();
 
-        let queue_aging_time = concurrent_meter.meter_config.queue_aging_time;
+        let queue_aging_time = concurrent_meter.meter_config.queue_aging_time as i64;
         let _aging_queue =
             timer.schedule_repeating(chrono::Duration::minutes(queue_aging_time), move || {
                 let mut sample_cache = concurrent_meter_clone.sample_cache.lock().unwrap();
@@ -257,9 +247,10 @@ impl ConcurrentMeter {
                         if cache.msg_cache_queue.len()
                             >= self.concurrent_meter.meter_config.cache_queue_size
                         {
-                            anyhow::bail!(ConcurrentMeterError::QueueLimit(
-                                self.concurrent_meter.meter_config.cache_queue_size
-                            ))
+                            Err(ConcurrentMeterError::QueueLimit(
+                                self.concurrent_meter.meter_config.cache_queue_size,
+                            )
+                            .into())
                         } else {
                             cache.msg_cache_queue.push_back(message);
                             cache.update_operation_time();
@@ -279,9 +270,10 @@ impl ConcurrentMeter {
                 if Self::concurrent_addr_num(sample_cache.deref())
                     >= self.concurrent_meter.meter_config.concurrent_addr
                 {
-                    anyhow::bail!(ConcurrentMeterError::AddrLimit(
-                        self.concurrent_meter.meter_config.concurrent_addr
-                    ))
+                    Err(ConcurrentMeterError::AddrLimit(
+                        self.concurrent_meter.meter_config.concurrent_addr,
+                    )
+                    .into())
                 } else {
                     sample_cache.insert(acq_addr.to_string(), SampleCache::new());
                     Self::mqtt_meter_reading_handler(message, master_address, concurrent_msg_sender)

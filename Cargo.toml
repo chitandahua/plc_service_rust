@@ -33,6 +33,7 @@ num_enum = "0"
 strum = "0.26"
 strum_macros = "0.26"
 timer = "0"
+nix = { version = "0.29", features = ["ioctl"] }
 
 [build-dependencies]
 vergen = { version = "7.4.2", default-features = false, features = [

@@ -1,4 +1,5 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::sync::atomic::AtomicU8;
 use std::{
     path::PathBuf,
     sync::{mpsc, Arc},
@@ -33,7 +34,8 @@ use uart_agent::{UartAgent, UartHandler};
 
 mod service;
 use service::{
-    ConcurrentMeter, DeviceInfo, MasterAddress, ModuleInfo, ModuleService, NodeManage, PlcInit,
+    ConcurrentMeter, DeviceInfo, MasterAddress, ModuleInfo, ModuleService, NodeManage, PlcDevice,
+    PlcInit,
 };
 
 mod uart_handler;
@@ -98,15 +100,23 @@ pub fn run(_args: Args) -> Result<()> {
     )?;
 
     let handler = Handler::new(msg_sender, mqtt_msg_handler.subscribe_topics());
+    let consecutive_timeouts = Arc::new(AtomicU8::new(0));
 
     let mut join_handler = mqtt_client.run(handler, receiver)?;
-    join_handler.extend(uart_agent.run(uart_handler, timer.clone(), uart_timeout_handler)?);
+    join_handler.extend(uart_agent.run(
+        uart_handler,
+        timer.clone(),
+        uart_timeout_handler,
+        consecutive_timeouts.clone(),
+    )?);
     join_handler.extend(mqtt_msg_handler.run(services)?);
 
     let device_info = DeviceInfo::new();
     device_info.run(&sender)?;
 
-    plc_init.run()?;
+    //plc_init.run()?;
+    let plc_device = PlcDevice::new("./".into(), sender.clone(), plc_init, consecutive_timeouts);
+    plc_device.run()?;
 
     for handler in join_handler {
         handler.join().unwrap();

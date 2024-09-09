@@ -1,4 +1,5 @@
-use std::sync::{mpsc, Condvar, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use crate::protocol::Address;
@@ -24,6 +25,7 @@ pub struct PlcInit {
     cond: Condvar,
     timeout: Duration,
     init_timeout: Duration,
+    init_flag: Arc<AtomicBool>,
 }
 
 impl PlcInit {
@@ -40,7 +42,12 @@ impl PlcInit {
             cond: Condvar::new(),
             timeout: Duration::from_millis(timeout),
             init_timeout: Duration::from_secs(init_timeout),
+            init_flag: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    pub fn initailized(&self) -> bool {
+        self.init_flag.load(Ordering::Relaxed)
     }
 
     fn notify_event(&self, event: InitEvent) {
@@ -105,6 +112,8 @@ impl PlcInit {
     }
 
     pub fn run(&self) -> Result<()> {
+        self.init_flag.store(false, Ordering::Relaxed);
+
         // 等待模块信息上报
         let master_address = self.services.master_address.get_master_address();
         let address_match = match self.wait_address() {
@@ -130,6 +139,7 @@ impl PlcInit {
             .node_manage
             .load_config(&self.uart_msg_sender)?;
 
+        self.init_flag.store(true, Ordering::Relaxed);
         Ok(())
     }
 }

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -69,6 +70,7 @@ impl UartAgent {
         mut handler: impl UartHandler + Send + 'static,
         timer: Arc<Timer>,
         uart_timeout_handler: UartTimeoutHandler,
+        consecutive_timeouts: Arc<AtomicU8>,
     ) -> Result<Vec<JoinHandle<()>>> {
         debug!("uart_agent start");
         let UartAgent {
@@ -129,6 +131,9 @@ impl UartAgent {
                     if let Some(req) = req {
                         warn!("request seq {} timeout", req.seq_num());
                         let _ = uart_timeout_handler.handle_timeout(req);
+                        consecutive_timeouts.fetch_add(1, Ordering::Relaxed);
+                    } else {
+                        consecutive_timeouts.store(0, Ordering::Relaxed);
                     }
                 }
             }

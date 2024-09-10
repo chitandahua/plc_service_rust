@@ -35,7 +35,7 @@ impl DeviceInfo {
         let mut count = 0;
 
         {
-            let esn = self.esn.lock().unwrap();
+            let mut esn = self.esn.lock().unwrap();
             while count < RETRY_COUNT {
                 let msg = Self::device_info_message(&topic);
                 let _ = mqtt_msg_sender.send(msg)?;
@@ -46,13 +46,12 @@ impl DeviceInfo {
                         esn.is_empty()
                     })
                     .unwrap();
-                //esn = result.0;
+                esn = result.0;
                 if !result.1.timed_out() {
                     break;
                 }
 
                 count += 1;
-                break;
             }
         }
 

@@ -1,9 +1,5 @@
 use anyhow::Context;
 use paho_mqtt::{Client, ConnectOptionsBuilder, CreateOptionsBuilder, Message};
-use serde::Deserialize;
-use std::fs::File;
-use std::io::Read;
-use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread::{self, sleep, JoinHandle};
 use std::time::Duration;
@@ -11,21 +7,7 @@ use tracing::{debug, error, info, warn};
 
 use paho_mqtt as mqtt;
 
-use crate::{MqttMessage, Result, APP_NAME};
-
-#[derive(Debug, Deserialize)]
-struct MqttConfig {
-    #[serde(rename = "Username")]
-    username: String,
-    #[serde(rename = "Password")]
-    password: String,
-    #[serde(rename = "ServiceIp")]
-    service_ip: String,
-    #[serde(rename = "ServicePort")]
-    service_port: u16,
-    #[serde(rename = "ClientId")]
-    client_id: Option<String>,
-}
+use crate::{MqttConfig, MqttMessage, Result, APP_NAME};
 
 pub trait MqttHandler {
     fn mqtt_msg_handler(&mut self, message: MqttMessage) -> Result<Option<MqttMessage>>;
@@ -39,15 +21,7 @@ pub struct MqttClient {
 }
 
 impl MqttClient {
-    pub fn from_file(config_path: PathBuf) -> Result<Self> {
-        let mut file = File::open(config_path).context("open mqtt config fail")?;
-        let mut buffer = String::new();
-        file.read_to_string(&mut buffer)
-            .context("invalid mqtt config")?;
-
-        let config: MqttConfig =
-            serde_json::from_str(buffer.as_str()).context("invalid mqtt json config")?;
-
+    pub fn from_config(config: MqttConfig) -> Result<Self> {
         debug!("mqtt server {}:{}", config.service_ip, config.service_port);
         let create_opts = CreateOptionsBuilder::new()
             .server_uri(format!(

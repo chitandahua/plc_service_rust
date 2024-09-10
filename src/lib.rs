@@ -1,16 +1,12 @@
-use anyhow::Context;
 use std::sync::atomic::AtomicU8;
-use std::{
-    path::PathBuf,
-    sync::{mpsc, Arc},
-};
+use std::sync::{mpsc, Arc};
 use timer::Timer;
 
 mod cli;
 pub use cli::Args;
 
 mod config;
-use config::{MeterConfig, PlcDeviceConfig};
+use config::{Config, MeterConfig, MqttConfig, PlcDeviceConfig, UartConfig};
 
 mod mqtt_agent;
 use mqtt_agent::{MqttClient, MqttHandler};
@@ -36,10 +32,7 @@ mod uart_agent;
 use uart_agent::{UartAgent, UartHandler};
 
 mod service;
-use service::{
-    ConcurrentMeter, DeviceInfo, MasterAddress, ModuleInfo, ModuleService, NodeManage, PlcDevice,
-    PlcInit,
-};
+use service::{DeviceInfo, ModuleInfo, ModuleService, PlcDevice, PlcInit};
 
 mod uart_handler;
 use uart_handler::{UartMsgHandler, UartTimeoutHandler};
@@ -50,121 +43,116 @@ pub type Result<T> = anyhow::Result<T, Error>;
 
 pub const APP_NAME: &str = "PLCServiceGW";
 
-const MQTT_CONFIG_PATH: &str = "./mqtt_server.json";
-const UART_CONFIG_PATH: &str = "./com_setting.json";
-const METER_CONFIG_PATH: &str = "./meter_config.json";
-const PLC_DEVICE_PATH: &str = "./plc_device.json";
-
-pub fn run(args: Args) -> Result<()> {
-    let meter_config = get_meter_config(&args)?;
-
-    tracing::debug!("app start");
-
-    let mqtt_client = MqttClient::from_file(MQTT_CONFIG_PATH.into())?;
-
-    // mqtt
-    let (uart_msg_sender, uart_msg_receiver) = mpsc::channel();
-    let (concurrent_msg_sender, concurrent_msg_receiver) = mpsc::channel();
-    let (sender, receiver) = mpsc::channel();
-    let (msg_sender, msg_receiver) = mpsc::channel();
-
-    let mut mqtt_msg_handler = MqttMsgHandler::new(
-        sender.clone(),
-        uart_msg_sender.clone(),
-        concurrent_msg_sender.clone(),
-        msg_receiver,
-    );
-
-    // timer
-    let timer = Arc::new(Timer::new());
-    let services = module_init(&mut mqtt_msg_handler, timer.clone(), &meter_config);
-
-    let plc_init = Arc::new(PlcInit::new(
-        uart_msg_sender.clone(),
-        services.clone(),
-        meter_config.uart_timeout,
-        meter_config.init_timeout,
-    ));
-    // uart
-    let uart_timeout_handler = UartTimeoutHandler::new(
-        sender.clone(),
-        concurrent_msg_sender.clone(),
-        services.clone(),
-    );
-    let uart_handler = UartMsgHandler::new(
-        sender.clone(),
-        uart_msg_sender.clone(),
-        concurrent_msg_sender.clone(),
-        services.clone(),
-        plc_init.clone(),
-    );
-    let uart_agent = UartAgent::new(
-        uart_msg_receiver,
-        concurrent_msg_receiver,
-        PathBuf::from(UART_CONFIG_PATH),
-        args.tcp_addr,
-        meter_config.uart_timeout,
-        meter_config.concurrent.timeout,
-    )?;
-
-    let handler = Handler::new(msg_sender, mqtt_msg_handler.subscribe_topics());
-    let consecutive_timeouts = Arc::new(AtomicU8::new(0));
-
-    let mut join_handler = mqtt_client.run(handler, receiver)?;
-    join_handler.extend(uart_agent.run(
-        uart_handler,
-        timer.clone(),
-        uart_timeout_handler,
-        consecutive_timeouts.clone(),
-    )?);
-    join_handler.extend(mqtt_msg_handler.run(services)?);
-
-    let device_info = DeviceInfo::new();
-    device_info.run(&sender)?;
-
-    //plc_init.run()?;
-    let plc_device_config: PlcDeviceConfig =
-        serde_json::from_reader(std::fs::File::open(PLC_DEVICE_PATH)?)?;
-    let plc_device = PlcDevice::new(
-        plc_device_config.port.parse()?,
-        sender.clone(),
-        plc_init,
-        consecutive_timeouts,
-    );
-    plc_device.run()?;
-
-    for handler in join_handler {
-        handler.join().unwrap();
-    }
-    tracing::info!("shutting down!");
-
-    Ok(())
-}
-
-fn module_init(
-    mqtt_msg_handler: &mut MqttMsgHandler,
+pub struct PlcService {
+    meter_config: MeterConfig,
+    plc_device_config: PlcDeviceConfig,
+    mqtt_client: MqttClient,
+    uart_agent: UartAgent,
+    module_service: ModuleService,
     timer: Arc<Timer>,
-    meter_config: &MeterConfig,
-) -> ModuleService {
-    ModuleInfo::init(mqtt_msg_handler);
-    let master_address = MasterAddress::new("123456789012".to_string());
-    master_address.init(mqtt_msg_handler);
-    let node_manage = NodeManage::new(None, meter_config.uart_timeout as u64);
-    node_manage.init(mqtt_msg_handler);
-
-    let concurrent_meter = ConcurrentMeter::new(&timer, meter_config.meter_reading.clone());
-    concurrent_meter.init(mqtt_msg_handler);
-
-    ModuleService::new(master_address, node_manage, concurrent_meter)
 }
 
-fn get_meter_config(args: &Args) -> Result<MeterConfig> {
-    let mut meter_config: MeterConfig = serde_json::from_reader(
-        std::fs::File::open(METER_CONFIG_PATH)
-            .with_context(|| format!("open {} failed", METER_CONFIG_PATH))?,
-    )
-    .with_context(|| format!("parse {} failed", METER_CONFIG_PATH))?;
+impl PlcService {
+    pub fn new(args: Args) -> Result<Self> {
+        let mut config = Config::new()?;
+        set_meter_config(&mut config.meter_config, &args);
 
+        let mqtt_client = MqttClient::from_config(config.mqtt_config)?;
+        let uart_agent = UartAgent::new(
+            config.uart_config,
+            args.tcp_addr,
+            config.meter_config.uart_timeout,
+            config.meter_config.concurrent.timeout,
+        )?;
+        let timer = Arc::new(Timer::new());
+        let module_service = ModuleService::new(timer.clone(), &config.meter_config);
+
+        Ok(Self {
+            meter_config: config.meter_config,
+            plc_device_config: config.plc_device_config,
+            mqtt_client,
+            uart_agent,
+            module_service,
+            timer,
+        })
+    }
+
+    pub fn run(self) -> Result<()> {
+        let (uart_msg_sender, uart_msg_receiver) = mpsc::channel();
+        let (concurrent_msg_sender, concurrent_msg_receiver) = mpsc::channel();
+        let (mqtt_msg_sender, mqtt_msg_receiver) = mpsc::channel();
+        let (msg_sender, msg_receiver) = mpsc::channel();
+
+        let mut mqtt_msg_handler = MqttMsgHandler::new(
+            mqtt_msg_sender.clone(),
+            uart_msg_sender.clone(),
+            concurrent_msg_sender.clone(),
+            msg_receiver,
+        );
+        self.module_service.init(&mut mqtt_msg_handler);
+
+        let uart_timeout_handler = UartTimeoutHandler::new(
+            mqtt_msg_sender.clone(),
+            concurrent_msg_sender.clone(),
+            self.module_service.clone(),
+        );
+
+        let plc_init = Arc::new(PlcInit::new(
+            uart_msg_sender.clone(),
+            self.module_service.clone(),
+            self.meter_config.uart_timeout,
+            self.meter_config.init_timeout,
+        ));
+        let uart_handler = UartMsgHandler::new(
+            mqtt_msg_sender.clone(),
+            uart_msg_sender.clone(),
+            concurrent_msg_sender.clone(),
+            self.module_service.clone(),
+            plc_init.clone(),
+        );
+
+        let handler = Handler::new(msg_sender, mqtt_msg_handler.subscribe_topics());
+        let consecutive_timeouts = Arc::new(AtomicU8::new(0));
+
+        let mut join_handler = self.mqtt_client.run(handler, mqtt_msg_receiver)?;
+        join_handler.extend(self.uart_agent.run(
+            uart_msg_receiver,
+            concurrent_msg_receiver,
+            uart_handler,
+            self.timer.clone(),
+            uart_timeout_handler,
+            consecutive_timeouts.clone(),
+        )?);
+        join_handler.extend(mqtt_msg_handler.run(self.module_service.clone())?);
+
+        // 初始化流程
+        let device_info = DeviceInfo::new();
+        device_info.run(&mqtt_msg_sender)?;
+
+        self.module_service
+            .master_address
+            .update_address(device_info.esn());
+        //.update_address("123456789012".to_string());
+
+        //plc_init.run()?;
+        let plc_device = PlcDevice::new(
+            self.plc_device_config.port.parse()?,
+            mqtt_msg_sender.clone(),
+            plc_init,
+            consecutive_timeouts,
+        );
+        join_handler.push(plc_device.run()?);
+
+        for handler in join_handler {
+            handler.join().unwrap();
+        }
+        tracing::info!("shutting down!");
+
+        Ok(())
+    }
+}
+
+fn set_meter_config(meter_config: &mut MeterConfig, args: &Args) {
     args.init_timeout
         .map(|init_timeout| meter_config.init_timeout = init_timeout);
     args.uart_timeout
@@ -188,20 +176,12 @@ fn get_meter_config(args: &Args) -> Result<MeterConfig> {
     args.meter_reading
         .queue_size
         .map(|queue_size| meter_config.meter_reading.cache_queue_size = queue_size);
-
-    Ok(meter_config)
 }
 
 const APP_VERSION: &str = "ST01.000";
 const COMPILE_TIME: time::Time = compile_time::time!();
 
 pub fn get_version_info() {
-    //println!(
-    //    "{} {}",
-    //    APP_VERSION,
-    //    env!("VERGEN_BUILD_TIMESTAMP")
-    //);
-
     let hour = COMPILE_TIME.hour() + 8;
     let minute = COMPILE_TIME.minute();
     let second = COMPILE_TIME.second();

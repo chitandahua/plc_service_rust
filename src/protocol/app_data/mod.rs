@@ -33,7 +33,7 @@ mod route_set;
 pub use route_set::{AddNodeRequest, DelNodeRequest, NodeInfo};
 
 pub const ADDR_LEN: usize = 6;
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Address([u8; ADDR_LEN]);
 
 impl Address {

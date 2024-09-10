@@ -1,4 +1,5 @@
-use crate::{MqttMessage, Result, APP_NAME};
+use crate::mqtt_message::PayloadBody;
+use crate::{MqttMessage, MqttPayload, Result, APP_NAME};
 use serde_json::json;
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::Duration;
@@ -17,8 +18,13 @@ impl DeviceInfo {
         }
     }
 
+    pub fn esn(&self) -> String {
+        let esn = self.esn.lock().unwrap();
+        esn.clone()
+    }
+
     fn device_info_message(topic: &str) -> MqttMessage {
-        let payload = json!([]);
+        let payload = MqttPayload::new_with_body(Some(PayloadBody::Nested { body: json!([]) }));
         MqttMessage::new(topic, payload)
     }
 
@@ -29,7 +35,7 @@ impl DeviceInfo {
         let mut count = 0;
 
         {
-            let mut esn = self.esn.lock().unwrap();
+            let esn = self.esn.lock().unwrap();
             while count < RETRY_COUNT {
                 let msg = Self::device_info_message(&topic);
                 let _ = mqtt_msg_sender.send(msg)?;
@@ -40,12 +46,13 @@ impl DeviceInfo {
                         esn.is_empty()
                     })
                     .unwrap();
-                esn = result.0;
+                //esn = result.0;
                 if !result.1.timed_out() {
                     break;
                 }
 
                 count += 1;
+                break;
             }
         }
 

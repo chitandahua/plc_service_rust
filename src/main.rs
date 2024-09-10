@@ -1,5 +1,5 @@
 use clap::Parser;
-use plc_service::{Args, Result};
+use plc_service::{Args, PlcService, Result};
 
 use tracing::{debug, error};
 use tracing_subscriber::fmt::time::OffsetTime;
@@ -68,5 +68,6 @@ fn init_log(args: &Args) -> Result<()> {
 
 fn run(args: Args) -> Result<()> {
     debug!("app start");
-    plc_service::run(args)
+    let app = PlcService::new(args)?;
+    app.run()
 }

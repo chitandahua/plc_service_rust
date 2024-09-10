@@ -1,26 +1,12 @@
 use bytes::{Buf, BufMut, BytesMut};
-use serde::Deserialize;
 use serialport::SerialPort;
 use std::io::{self, Cursor, Read, Write};
 use std::net::SocketAddr;
 use std::net::TcpStream;
-use std::path::PathBuf;
 use tracing::{debug, info};
 
 use crate::protocol::Frame;
-use crate::Result;
-
-#[derive(Debug, Deserialize)]
-struct UartConfig {
-    port: String,
-    #[serde(rename = "baudrate")]
-    baud_rate: u32,
-    #[serde(rename = "wordlength")]
-    word_length: u8,
-    parity: String,
-    #[serde(rename = "stopbit")]
-    stop_bit: u8,
-}
+use crate::{Result, UartConfig};
 
 pub struct UartPort {
     pub reader: StreamReader,
@@ -56,36 +42,34 @@ impl Write for SerialPortAdapter {
     }
 }
 
-impl UartConfig {
-    fn open(self) -> serialport::Result<Box<dyn SerialPort>> {
-        serialport::new(self.port, self.baud_rate)
-            .timeout(std::time::Duration::from_millis(100))
-            .data_bits(match self.word_length {
-                5 => serialport::DataBits::Five,
-                6 => serialport::DataBits::Six,
-                7 => serialport::DataBits::Seven,
-                8 => serialport::DataBits::Eight,
-                _ => serialport::DataBits::Eight,
-            })
-            .stop_bits(match self.stop_bit {
-                1 => serialport::StopBits::One,
-                2 => serialport::StopBits::Two,
-                _ => serialport::StopBits::One,
-            })
-            .parity(match self.parity.as_str() {
-                "n" | "N" => serialport::Parity::None,
-                "o" | "O" => serialport::Parity::Odd,
-                "e" | "E" => serialport::Parity::Even,
-                _ => serialport::Parity::None,
-            })
-            .flow_control(serialport::FlowControl::None)
-            .timeout(std::time::Duration::from_millis(100))
-            .open()
-    }
+fn open(config: UartConfig) -> serialport::Result<Box<dyn SerialPort>> {
+    serialport::new(config.port, config.baud_rate)
+        .timeout(std::time::Duration::from_millis(100))
+        .data_bits(match config.word_length {
+            5 => serialport::DataBits::Five,
+            6 => serialport::DataBits::Six,
+            7 => serialport::DataBits::Seven,
+            8 => serialport::DataBits::Eight,
+            _ => serialport::DataBits::Eight,
+        })
+        .stop_bits(match config.stop_bit {
+            1 => serialport::StopBits::One,
+            2 => serialport::StopBits::Two,
+            _ => serialport::StopBits::One,
+        })
+        .parity(match config.parity.as_str() {
+            "n" | "N" => serialport::Parity::None,
+            "o" | "O" => serialport::Parity::Odd,
+            "e" | "E" => serialport::Parity::Even,
+            _ => serialport::Parity::None,
+        })
+        .flow_control(serialport::FlowControl::None)
+        .timeout(std::time::Duration::from_millis(100))
+        .open()
 }
 
 impl UartPort {
-    pub fn new(uart_config: PathBuf, tcp_addr: Option<SocketAddr>) -> Result<UartPort> {
+    pub fn new(config: UartConfig, tcp_addr: Option<SocketAddr>) -> Result<UartPort> {
         let write_stream: Box<dyn Write + Send>;
         let read_stream: Box<dyn Read + Send>;
         if tcp_addr.is_some() {
@@ -93,8 +77,7 @@ impl UartPort {
             write_stream = Box::new(stream.try_clone()?);
             read_stream = Box::new(stream);
         } else {
-            let config: UartConfig = serde_json::from_reader(std::fs::File::open(uart_config)?)?;
-            let stream = config.open()?;
+            let stream = open(config)?;
             write_stream = Box::new(SerialPortAdapter {
                 port: stream.try_clone()?,
             });

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
@@ -12,10 +11,10 @@ use tracing::{debug, error, info, warn};
 use crate::serial_port::{StreamReader, StreamWriter};
 use crate::uart_handler::UartTimeoutHandler;
 use crate::{ReqInfo, UartMessage};
-use crate::{Result, UartPort};
+use crate::{Result, UartConfig, UartPort};
 
 #[derive(Debug)]
-struct UartConfig {
+struct UartTimeout {
     timeout: Duration,
     concurrent_timeout: chrono::Duration,
 }
@@ -27,12 +26,10 @@ struct UartReqInfo {
 }
 
 pub struct UartAgent {
-    uart_requeset_receiver: mpsc::Receiver<UartMessage>,
-    concurrent_req_receiver: mpsc::Receiver<UartMessage>,
     cur_req_info: Arc<Mutex<UartReqInfo>>,
     cond: Arc<Condvar>,
     reader: StreamReader,
-    config: UartConfig,
+    config: UartTimeout,
 }
 
 pub trait UartHandler {
@@ -41,9 +38,7 @@ pub trait UartHandler {
 
 impl UartAgent {
     pub fn new(
-        uart_requeset_receiver: mpsc::Receiver<UartMessage>,
-        concurrent_req_receiver: mpsc::Receiver<UartMessage>,
-        uart_config: PathBuf,
+        uart_config: UartConfig,
         tcp_addr: Option<SocketAddr>,
         uart_timeout: u32,
         concurrent_timeout: u32,
@@ -51,8 +46,6 @@ impl UartAgent {
         let UartPort { reader, writer } = UartPort::new(uart_config, tcp_addr)?;
 
         Ok(UartAgent {
-            uart_requeset_receiver,
-            concurrent_req_receiver,
             cur_req_info: Arc::new(Mutex::new(UartReqInfo {
                 req_info: None,
                 concurrent_req_info: HashMap::new(),
@@ -60,7 +53,7 @@ impl UartAgent {
             })),
             cond: Arc::new(Condvar::new()),
             reader,
-            config: UartConfig {
+            config: UartTimeout {
                 timeout: Duration::from_millis(uart_timeout as u64),
                 concurrent_timeout: chrono::Duration::seconds(concurrent_timeout as i64),
             },
@@ -69,6 +62,8 @@ impl UartAgent {
 
     pub fn run(
         self,
+        uart_requeset_receiver: mpsc::Receiver<UartMessage>,
+        concurrent_req_receiver: mpsc::Receiver<UartMessage>,
         mut handler: impl UartHandler + Send + 'static,
         timer: Arc<Timer>,
         uart_timeout_handler: UartTimeoutHandler,
@@ -76,8 +71,6 @@ impl UartAgent {
     ) -> Result<Vec<JoinHandle<()>>> {
         debug!("uart_agent start");
         let UartAgent {
-            uart_requeset_receiver,
-            concurrent_req_receiver,
             cur_req_info,
             mut reader,
             cond,

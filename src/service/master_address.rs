@@ -20,7 +20,15 @@ struct NodeAddress {
 const MASTER_NODE: &str = "masterNode";
 
 impl MasterAddress {
-    pub fn new(esn: String) -> Self {
+    pub fn new() -> Self {
+        MasterAddress {
+            node_addr: NodeAddress {
+                address: Mutex::new(Address::default()),
+            },
+        }
+    }
+
+    pub fn update_address(&self, esn: String) {
         // esn中可能有字母需去除 取12个数字 不足则前面补0
         let esn = esn
             .chars()
@@ -28,11 +36,8 @@ impl MasterAddress {
             .take(12)
             .collect::<String>();
 
-        MasterAddress {
-            node_addr: NodeAddress {
-                address: Mutex::new(Address::from(esn.as_str())),
-            },
-        }
+        let mut address = self.node_addr.address.lock().unwrap();
+        *address = Address::from(esn.as_str());
     }
 
     pub fn get_master_address(&self) -> Address {

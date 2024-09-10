@@ -26,11 +26,12 @@ mod plc_device;
 pub use plc_device::PlcDevice;
 
 use std::sync::Arc;
+use timer::Timer;
 
 use crate::mqtt_message::Status;
 use crate::protocol::app_data::{ConfirmResponse, DenyResponse};
 use crate::request_info::MqttReqInfo;
-use crate::{MqttMessage, MqttPayload};
+use crate::{MeterConfig, MqttMessage, MqttMsgHandler, MqttPayload};
 
 #[derive(Clone)]
 pub struct ModuleService {
@@ -40,16 +41,19 @@ pub struct ModuleService {
 }
 
 impl ModuleService {
-    pub fn new(
-        master_address: MasterAddress,
-        node_manage: NodeManage,
-        concurrent_meter: ConcurrentMeter,
-    ) -> Self {
+    pub fn new(timer: Arc<Timer>, meter_config: &MeterConfig) -> Self {
         Self {
-            master_address: Arc::new(master_address),
-            node_manage: Arc::new(node_manage),
-            concurrent_meter,
+            master_address: Arc::new(MasterAddress::new()),
+            node_manage: Arc::new(NodeManage::new(None, meter_config.uart_timeout as u64)),
+            concurrent_meter: ConcurrentMeter::new(&timer, meter_config.meter_reading.clone()),
         }
+    }
+
+    pub fn init(&self, mqtt_msg_handler: &mut MqttMsgHandler) {
+        ModuleInfo::init(mqtt_msg_handler);
+        self.master_address.init(mqtt_msg_handler);
+        self.node_manage.init(mqtt_msg_handler);
+        self.concurrent_meter.init(mqtt_msg_handler);
     }
 }
 

@@ -65,7 +65,7 @@ impl PlcService {
             config.meter_config.concurrent.timeout,
         )?;
         let timer = Arc::new(Timer::new());
-        let module_service = ModuleService::new(timer.clone(), &config.meter_config);
+        let module_service = ModuleService::new(timer.clone(), &config.meter_config)?;
 
         Ok(Self {
             meter_config: config.meter_config,
@@ -126,22 +126,22 @@ impl PlcService {
         join_handler.extend(mqtt_msg_handler.run(self.module_service.clone())?);
 
         // 初始化流程
-        let device_info = DeviceInfo::new();
-        device_info.run(&mqtt_msg_sender)?;
+        //let device_info = DeviceInfo::new();
+        //device_info.run(&mqtt_msg_sender)?;
 
         self.module_service
             .master_address
-            .update_address(device_info.esn());
-        //.update_address("123456789012".to_string());
+            //.update_address(device_info.esn());
+            .update_address("123456789012".to_string());
 
-        //plc_init.run()?;
-        let plc_device = PlcDevice::new(
-            self.plc_device_config.port.parse()?,
-            mqtt_msg_sender.clone(),
-            plc_init,
-            consecutive_timeouts,
-        );
-        join_handler.push(plc_device.run()?);
+        plc_init.run()?;
+        //let plc_device = PlcDevice::new(
+        //    self.plc_device_config.port.parse()?,
+        //    mqtt_msg_sender.clone(),
+        //    plc_init,
+        //    consecutive_timeouts,
+        //);
+        //join_handler.push(plc_device.run()?);
 
         for handler in join_handler {
             handler.join().unwrap();

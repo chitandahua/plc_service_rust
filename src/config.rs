@@ -72,7 +72,7 @@ pub struct Config {
     pub uart_config: UartConfig,
 }
 
-static APP_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
+pub static APP_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
     std::env::current_dir().expect("Failed to get current directory")
     //format!("/userdata/dgri/{}", APP_NAME).into()
 });

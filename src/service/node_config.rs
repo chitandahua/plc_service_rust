@@ -1,5 +1,7 @@
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 use thiserror::Error;
@@ -95,14 +97,21 @@ impl GlobalNodeConfig {
 pub(crate) struct NodeConfig {
     node_data: HashMap<String, Vec<Arc<NodeInfo>>>,
     global_node_config: GlobalNodeConfig,
+    db_conn: Option<Connection>,
+    config_path: Option<PathBuf>,
 }
 
 impl NodeConfig {
-    pub fn new() -> Self {
-        NodeConfig {
+    pub fn new(config_path: Option<PathBuf>) -> Result<Self> {
+        let db_conn = config_path
+            .as_ref()
+            .map_or(Some(Connection::open(Self::get_db_path())?), |_| None);
+        Ok(NodeConfig {
             node_data: HashMap::new(),
             global_node_config: GlobalNodeConfig::new(),
-        }
+            db_conn,
+            config_path,
+        })
     }
 
     pub fn add_node_info_exist(&mut self, app: &str, node: &NodeInfo) -> Result<bool> {
@@ -127,8 +136,8 @@ impl NodeConfig {
                 existing.pro_type == node.pro_type,
                 NodeConfigError::TypeMismatch(node.pro_type.clone(), existing.pro_type.clone())
             );
-            //self.add_config(&existing)?; // TODO
             app_data.push(existing);
+            self.add_config(app, vec![node.clone()].as_ref())?;
             info!(
                 "node {} already exist in other app, just increase ref cnt",
                 node.acq_addr
@@ -144,10 +153,13 @@ impl NodeConfig {
         debug!("add node {} for app {}", &node.acq_addr, app);
         let node = Arc::new(node);
         self.global_node_config.add_node_info(&node);
-        self.node_data.get_mut(app).unwrap().push(node);
+        self.node_data
+            .entry(app.to_string())
+            .or_insert_with(Vec::new)
+            .push(node);
     }
 
-    pub fn _add_node_info(&mut self, app: &str, node: NodeInfo) -> Result<()> {
+    pub fn add_node_info(&mut self, app: &str, node: NodeInfo) -> Result<()> {
         if false == self.add_node_info_exist(app, &node)? {
             self.add_node_info_checked(app, node);
         }
@@ -155,15 +167,15 @@ impl NodeConfig {
         Ok(())
     }
 
-    pub fn should_remove_node_info(&mut self, app: &str, node: &NodeInfo) -> bool {
+    pub fn should_remove_node_info(&mut self, app: &str, node: &NodeInfo) -> Result<bool> {
         let app_data = match self.node_data.get_mut(app) {
             Some(data) => data,
-            None => return false,
+            None => return Ok(false),
         };
 
         let pos = match app_data.iter().position(|n| n.acq_addr == node.acq_addr) {
             Some(p) => p,
-            None => return false,
+            None => return Ok(false),
         };
 
         debug!(
@@ -174,15 +186,16 @@ impl NodeConfig {
         let count = Arc::strong_count(&app_data[pos]);
         if count == 1 {
             // 只有自己引用
-            true
+            Ok(true)
         } else {
             // 如果还有其他引用，只从当前 app_data 中移除
             debug!(
                 "Node {} still exists in other app(s), just removing from current app",
                 &node.acq_addr
             );
-            app_data.remove(pos);
-            false
+            let node_info = app_data.remove(pos);
+            self.del_config(app, vec![node_info.deref().clone()].as_ref())?;
+            Ok(false)
         }
     }
 
@@ -198,7 +211,7 @@ impl NodeConfig {
     }
 
     pub fn _remove_node_info(&mut self, app: &str, node: &NodeInfo) -> Result<()> {
-        if self.should_remove_node_info(app, node) {
+        if self.should_remove_node_info(app, node)? {
             self.remove_node_info_checked(app, node)?;
         }
 
@@ -253,6 +266,10 @@ impl NodeConfig {
             .unwrap_or_default()
     }
 
+    pub fn _get_all_app_node_infos(&self) -> &HashMap<String, Vec<Arc<NodeInfo>>> {
+        &self.node_data
+    }
+
     pub fn get_node_count(&self, app: &str) -> usize {
         self.node_data
             .get(app)
@@ -260,17 +277,18 @@ impl NodeConfig {
             .unwrap_or(0)
     }
 
-    pub fn _add_node_infos(&mut self, app: &str, nodes: Vec<NodeInfo>) -> Result<()> {
+    pub fn add_node_infos(&mut self, app: &str, nodes: &[NodeInfo]) -> Result<()> {
         for node in nodes {
-            self._add_node_info(app, node)?;
+            self.add_node_info(app, node.to_owned())?;
         }
         Ok(())
     }
 
-    pub fn add_node_infos_checked(&mut self, app: &str, nodes: Vec<NodeInfo>) {
+    pub fn add_node_infos_checked(&mut self, app: &str, nodes: &[NodeInfo]) -> Result<()> {
         for node in nodes {
-            self.add_node_info_checked(app, node);
+            self.add_node_info_checked(app, node.to_owned());
         }
+        self.add_config(app, nodes)
     }
 
     pub fn _remove_node_infos(&mut self, app: &str, nodes: &[NodeInfo]) -> Result<()> {
@@ -284,20 +302,82 @@ impl NodeConfig {
         for node in nodes {
             self.remove_node_info_checked(app, node)?;
         }
-        Ok(())
+        self.del_config(app, nodes)
     }
 
-    pub fn _load_config(&mut self, config_path: Option<&Path>) -> Result<()> {
-        self.node_data.clear();
-
-        if let Some(path) = config_path {
-            self._load_config_from_file(path)
+    pub fn load_config(&mut self) -> Result<HashMap<String, Vec<NodeInfo>>> {
+        if self.config_path.is_some() {
+            self.load_config_from_file()
+        } else if self.db_conn.is_some() {
+            self.load_config_from_db()
         } else {
-            self._load_config_from_db(_get_db_path().as_path())
+            unreachable!("Both config_path and db_conn are None")
         }
     }
 
-    pub fn _save_config_to_file(&self, config_path: &Path) -> Result<()> {
+    pub fn _save_config(&self) -> Result<()> {
+        if self.config_path.is_some() {
+            self.save_config_to_file(self.config_path.as_ref().unwrap())
+        } else if self.db_conn.is_some() {
+            self._save_config_to_db()
+        } else {
+            unreachable!("Both config_path and db_conn are None")
+        }
+    }
+
+    pub fn add_config(&self, app: &str, node: &[NodeInfo]) -> Result<()> {
+        if let Some(config_path) = &self.config_path {
+            self.save_config_to_file(config_path.as_path())
+        } else if self.db_conn.is_some() {
+            self.add_db_config(app, node)
+        } else {
+            unreachable!("Both config_path and db_conn are None")
+        }
+    }
+
+    pub fn del_config(&mut self, app: &str, nodes: &[NodeInfo]) -> Result<()> {
+        if let Some(config_path) = &self.config_path {
+            self.save_config_to_file(config_path.as_path())
+        } else if self.db_conn.is_some() {
+            self.del_db_config(app, nodes)
+        } else {
+            unreachable!("Both config_path and db_conn are None")
+        }
+    }
+}
+
+impl NodeConfig {
+    fn load_config_from_file(&mut self) -> Result<HashMap<String, Vec<NodeInfo>>> {
+        let mut result = HashMap::new();
+        let config_path = self.config_path.as_ref().unwrap().to_owned();
+        let value = serde_json::from_reader(std::fs::File::open(config_path)?)?;
+        if let serde_json::Value::Object(map) = value {
+            for (app, nodes) in map {
+                if let serde_json::Value::Array(nodes) = nodes {
+                    let nodes: std::result::Result<Vec<NodeInfo>, serde_json::Error> = nodes
+                        .into_iter()
+                        .map(|node| serde_json::from_value(node))
+                        .collect();
+                    let nodes = nodes?;
+                    //self.add_node_infos(&app, &nodes)?;
+                    result.insert(app, nodes);
+                } else {
+                    anyhow::bail!(
+                        "Invalid config file: {}",
+                        self.config_path.as_ref().unwrap().display()
+                    );
+                }
+            }
+        } else {
+            anyhow::bail!(
+                "Invalid config file: {}",
+                self.config_path.as_ref().unwrap().display()
+            );
+        }
+        Ok(result)
+    }
+
+    fn save_config_to_file(&self, config_path: &Path) -> Result<()> {
         let mut result = serde_json::Map::new();
 
         for (app, nodes) in &self.node_data {
@@ -313,21 +393,128 @@ impl NodeConfig {
         std::fs::write(config_path, serde_json::to_string_pretty(&json).unwrap())
             .map_err(|e| anyhow::anyhow!("Failed to write config file: {}", e))
     }
-
-    fn _load_config_from_file(&mut self, _config_path: &Path) -> Result<()> {
-        // Implementation for loading from file
-        unimplemented!()
-    }
-
-    fn _load_config_from_db(&mut self, _db_path: &Path) -> Result<()> {
-        // Implementation for loading from database
-        unimplemented!()
-    }
-
-    // ... Other methods ...
 }
 
-fn _get_db_path() -> PathBuf {
-    // Implementation to get the database path
-    unimplemented!()
+const SQL_TABLE_PREFIX: &str = "plc_device_";
+
+impl NodeConfig {
+    fn get_db_path() -> PathBuf {
+        use crate::config::APP_PATH;
+        APP_PATH.join("plc_config.db")
+    }
+
+    fn get_sql_table_name(app: &str) -> String {
+        format!("{}{}", SQL_TABLE_PREFIX, app)
+    }
+
+    fn create_sqlite_table(&self, app: &str) -> Result<()> {
+        let sql = format!(
+            "CREATE TABLE IF NOT EXISTS {} (id INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT, protocol TEXT)",
+            Self::get_sql_table_name(app)
+        );
+        self.db_conn.as_ref().unwrap().execute(&sql, [])?;
+        Ok(())
+    }
+
+    fn _drop_sqlite_table(&self, app: &str) -> Result<()> {
+        let sql = format!("DROP TABLE IF EXISTS {}", Self::get_sql_table_name(app));
+        self.db_conn.as_ref().unwrap().execute(&sql, [])?;
+        Ok(())
+    }
+
+    fn add_sqlite_config(&self, app: &str, node: &NodeInfo) -> Result<()> {
+        let sql = format!(
+            "INSERT INTO {} (address, protocol) VALUES (?, ?)",
+            Self::get_sql_table_name(app)
+        );
+        self.db_conn
+            .as_ref()
+            .unwrap()
+            .execute(&sql, params![node.acq_addr, node.pro_type])?;
+        Ok(())
+    }
+
+    fn del_sqlite_config(&self, app: &str, node: &NodeInfo) -> Result<()> {
+        let sql = format!(
+            "DELETE FROM {} WHERE address = ? AND protocol = ?",
+            Self::get_sql_table_name(app)
+        );
+        self.db_conn
+            .as_ref()
+            .unwrap()
+            .execute(&sql, params![node.acq_addr, node.pro_type])?;
+        Ok(())
+    }
+
+    fn load_config_from_db(&mut self) -> Result<HashMap<String, Vec<NodeInfo>>> {
+        let mut result = HashMap::new();
+        let table_names = {
+            let db_conn = self.db_conn.as_ref().unwrap();
+            let mut stmt = db_conn
+                .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE ?")?;
+            let table_names: Vec<String> = stmt
+                .query_map([format!("{}%", SQL_TABLE_PREFIX)], |row| row.get(0))?
+                .filter_map(|result| result.ok())
+                .collect();
+            table_names
+        };
+
+        for table in table_names {
+            if table.is_empty() {
+                continue;
+            }
+
+            let app = &table[SQL_TABLE_PREFIX.len()..];
+            let nodes: Vec<NodeInfo> = {
+                let sql = format!("SELECT address, protocol FROM {}", table);
+                let mut stmt = self.db_conn.as_ref().unwrap().prepare(&sql)?;
+                let nodes = stmt.query_map([], |row| {
+                    Ok(NodeInfo {
+                        acq_addr: row.get(0)?,
+                        pro_type: row.get(1)?,
+                    })
+                })?;
+                let nodes = nodes.filter_map(|result| result.ok()).collect();
+                nodes
+            };
+
+            debug!("Loading config from db: app={}, nodes={:?}", app, nodes);
+
+            result.insert(app.to_owned(), nodes);
+            //self.add_node_infos(app, &nodes)?;
+        }
+
+        Ok(result)
+    }
+
+    fn _save_config_to_db(&self) -> Result<()> {
+        for (app, nodes) in &self.node_data {
+            self._drop_sqlite_table(app)?;
+            self.create_sqlite_table(app)?;
+
+            for node in nodes {
+                self.add_sqlite_config(app, node)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn add_db_config(&self, app: &str, nodes: &[NodeInfo]) -> Result<()> {
+        self.create_sqlite_table(app)?;
+
+        for node in nodes {
+            self.add_sqlite_config(app, node)?;
+        }
+
+        Ok(())
+    }
+
+    fn del_db_config(&self, app: &str, nodes: &[NodeInfo]) -> Result<()> {
+        for node in nodes {
+            self.del_sqlite_config(app, node)?;
+        }
+
+        Ok(())
+    }
 }

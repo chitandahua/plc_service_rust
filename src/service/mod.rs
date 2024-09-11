@@ -31,7 +31,7 @@ use timer::Timer;
 use crate::mqtt_message::Status;
 use crate::protocol::app_data::{ConfirmResponse, DenyResponse};
 use crate::request_info::MqttReqInfo;
-use crate::{MeterConfig, MqttMessage, MqttMsgHandler, MqttPayload};
+use crate::{MeterConfig, MqttMessage, MqttMsgHandler, MqttPayload, Result};
 
 #[derive(Clone)]
 pub struct ModuleService {
@@ -41,12 +41,12 @@ pub struct ModuleService {
 }
 
 impl ModuleService {
-    pub fn new(timer: Arc<Timer>, meter_config: &MeterConfig) -> Self {
-        Self {
+    pub fn new(timer: Arc<Timer>, meter_config: &MeterConfig) -> Result<Self> {
+        Ok(Self {
             master_address: Arc::new(MasterAddress::new()),
-            node_manage: Arc::new(NodeManage::new(None, meter_config.uart_timeout as u64)),
+            node_manage: Arc::new(NodeManage::new(None, meter_config.uart_timeout as u64)?),
             concurrent_meter: ConcurrentMeter::new(&timer, meter_config.meter_reading.clone()),
-        }
+        })
     }
 
     pub fn init(&self, mqtt_msg_handler: &mut MqttMsgHandler) {

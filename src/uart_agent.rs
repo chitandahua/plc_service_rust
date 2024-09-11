@@ -86,8 +86,15 @@ impl UartAgent {
             const MAX_RETRY: usize = 1; // 不重试
             while let Ok(req_msg) = uart_requeset_receiver.recv() {
                 let UartMessage { req_info, frame } = req_msg;
-                debug!("recv request frame {}", frame.to_hex_string());
                 let is_response = frame.is_master_response();
+                debug!(
+                    "recv {} frame {}",
+                    match is_response {
+                        true => "response",
+                        false => "request",
+                    },
+                    frame.to_hex_string()
+                );
 
                 let mut cnt = 0;
                 {

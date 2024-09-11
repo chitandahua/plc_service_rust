@@ -1,10 +1,11 @@
 use super::node_config::{self, NodeInfo};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::{mpsc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::{MqttMessage, PayloadBody, Status};
@@ -25,7 +26,6 @@ struct NodeConfig {
 }
 
 pub struct NodeManage {
-    _config_path: Option<PathBuf>,
     timeout: u64,
     node_conf: Mutex<NodeConfig>,
     cond: Condvar,
@@ -56,10 +56,6 @@ trait AcqFilesOperation {
         app: &str,
         node_infos: &[NodeInfo],
     ) -> Result<()>;
-
-    fn init_node_config(_node_config: &mut node_config::NodeConfig) -> Result<()> {
-        Ok(())
-    }
 }
 
 struct AddAcqFiles;
@@ -118,8 +114,7 @@ impl AcqFilesOperation for AddAcqFiles {
         app: &str,
         node_infos: &[NodeInfo],
     ) -> Result<()> {
-        node_config.add_node_infos_checked(app, node_infos.to_vec());
-        Ok(())
+        node_config.add_node_infos_checked(app, node_infos)
     }
 }
 
@@ -142,7 +137,7 @@ impl AcqFilesOperation for DelAcqFiles {
         node_infos
             .iter()
             .try_fold(Vec::<NodeInfo>::new(), |mut uart_node_infos, node_info| {
-                if node_config.should_remove_node_info(app, node_info) {
+                if node_config.should_remove_node_info(app, node_info)? {
                     uart_node_infos.push(node_info.clone());
                 }
                 Ok(uart_node_infos)
@@ -200,25 +195,19 @@ impl AcqFilesOperation for ClearAcqFiles {
     ) -> Result<()> {
         DelAcqFiles::update_node_config(node_config, app, node_infos)
     }
-
-    fn init_node_config(node_config: &mut node_config::NodeConfig) -> Result<()> {
-        node_config.clear_all_app();
-        Ok(())
-    }
 }
 
 const ACQ_FILES_CHUNK_SIZE: usize = 10;
 impl NodeManage {
-    pub fn new(_config_path: Option<PathBuf>, timeout: u64) -> Self {
-        Self {
-            _config_path,
+    pub fn new(config_path: Option<PathBuf>, timeout: u64) -> Result<Self> {
+        Ok(Self {
             timeout,
             node_conf: Mutex::new(NodeConfig {
-                node_config: node_config::NodeConfig::new(),
+                node_config: node_config::NodeConfig::new(config_path)?,
                 operation_result: None,
             }),
             cond: Condvar::new(),
-        }
+        })
     }
 
     pub fn init(&self, mqtt_msg_handler: &mut MqttMsgHandler) {
@@ -303,7 +292,7 @@ impl NodeManage {
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<usize> {
         let mut node_config = self.node_conf.lock().unwrap();
-        let node_infos = T::operate_node_infos(
+        let operate_nodes = T::operate_node_infos(
             &mut node_config.node_config,
             app,
             node_infos,
@@ -311,18 +300,20 @@ impl NodeManage {
         )?;
 
         // 无需uart操作
-        let node_number = node_infos.len();
+        let node_number = operate_nodes.len();
         if node_number == 0 {
+            debug!("no need to operate uart");
             return Ok(0);
         }
 
+        debug!("uart operate nodes: {:?}", operate_nodes);
         if let Some(mqtt_req_info) = mqtt_req_info.as_mut() {
             let extra_data = NodeInfoData {
-                node_infos: node_infos.clone(),
+                node_infos: operate_nodes.clone(),
             };
             mqtt_req_info.set_extra_data(Some(Box::new(extra_data)));
         }
-        let frame = Frame::new_request(None, T::create_uart_request(node_infos));
+        let frame = Frame::new_request(None, T::create_uart_request(operate_nodes));
 
         let req_info = ReqInfo::new(&frame, mqtt_req_info);
         uart_msg_sender.send(UartMessage::new(req_info, frame))?;
@@ -400,10 +391,7 @@ impl NodeManage {
 
         if is_init || result.is_err() {
             let mut node_config = self.node_conf.lock().unwrap();
-            node_config.operation_result = Some(match result.is_err() {
-                false => T::init_node_config(&mut node_config.node_config),
-                true => result,
-            });
+            node_config.operation_result = Some(result);
             self.cond.notify_one();
         } else {
             let mut mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
@@ -412,7 +400,7 @@ impl NodeManage {
             let mut node_conf = self.node_conf.lock().unwrap();
             let result = T::update_node_config(
                 &mut node_conf.node_config,
-                MqttTopic::get_info_target(mqtt_req_info.topic()),
+                MqttTopic::get_app(mqtt_req_info.topic()),
                 &node_infos.node_infos,
             );
             node_conf.operation_result = Some(result);
@@ -441,11 +429,41 @@ impl NodeManage {
     }
 
     pub fn uart_clear_acq_files(&self, message: UartMessage) -> Result<()> {
+        {
+            let mut node_config = self.node_conf.lock().unwrap();
+            node_config.node_config.clear_all_app();
+        }
         self.uart_operate_acq_files::<ClearAcqFiles>(message)
     }
 
-    pub fn load_config(&self, _uart_msg_sender: &mpsc::Sender<UartMessage>) -> Result<()> {
-        //self.operate_acq_files::<T>(app, None, node_infos, uart_msg_sender);
+    pub fn load_config(&self, uart_msg_sender: &mpsc::Sender<UartMessage>) -> Result<()> {
+        let nodes = {
+            let mut node_config = self.node_conf.lock().unwrap();
+            node_config.node_config.load_config()?
+        };
+
+        //for (app, node_infos) in node_config.node_config.get_all_app_node_infos() {
+        //    let node_infos: Vec<NodeInfo> = node_infos
+        //        .iter()
+        //        .map(|arc| (*arc).deref().clone())
+        //        .collect();
+        //    debug!("app: {}, node_infos: {:?}", app, node_infos);
+        //    self.operate_chunk_acq_files::<AddAcqFiles>(app, None, &node_infos, uart_msg_sender)?;
+        //}
+        for (app, node_infos) in nodes {
+            debug!("init app: {}, node_infos: {:?}", app, node_infos);
+            let spy_mqtt_req_info = MqttReqInfo::new(
+                format!("{}/set/request/{}/acqFiles", app, APP_NAME).as_str(),
+                "",
+                None,
+            );
+            self.operate_acq_files::<AddAcqFiles>(
+                app.as_str(),
+                Some(spy_mqtt_req_info),
+                node_infos.clone(),
+                uart_msg_sender,
+            )?;
+        }
 
         Ok(())
     }

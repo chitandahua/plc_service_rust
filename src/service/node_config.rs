@@ -114,7 +114,12 @@ impl NodeConfig {
         })
     }
 
-    pub fn add_node_info_exist(&mut self, app: &str, node: &NodeInfo) -> Result<bool> {
+    pub fn add_node_info_exist(
+        &mut self,
+        app: &str,
+        node: &NodeInfo,
+        is_init: bool,
+    ) -> Result<bool> {
         let app_data = self
             .node_data
             .entry(app.to_string())
@@ -137,7 +142,9 @@ impl NodeConfig {
                 NodeConfigError::TypeMismatch(node.pro_type.clone(), existing.pro_type.clone())
             );
             app_data.push(existing);
-            self.add_config(app, vec![node.clone()].as_ref())?;
+            if !is_init {
+                self.add_config(app, vec![node.clone()].as_ref())?;
+            }
             info!(
                 "node {} already exist in other app, just increase ref cnt",
                 node.acq_addr
@@ -159,8 +166,9 @@ impl NodeConfig {
             .push(node);
     }
 
-    pub fn add_node_info(&mut self, app: &str, node: NodeInfo) -> Result<()> {
-        if false == self.add_node_info_exist(app, &node)? {
+    // 当前仅初始化时调用
+    fn add_node_info(&mut self, app: &str, node: NodeInfo) -> Result<()> {
+        if false == self.add_node_info_exist(app, &node, true)? {
             self.add_node_info_checked(app, node);
         }
 
@@ -277,7 +285,7 @@ impl NodeConfig {
             .unwrap_or(0)
     }
 
-    pub fn add_node_infos(&mut self, app: &str, nodes: &[NodeInfo]) -> Result<()> {
+    fn add_node_infos(&mut self, app: &str, nodes: &[NodeInfo]) -> Result<()> {
         for node in nodes {
             self.add_node_info(app, node.to_owned())?;
         }
@@ -359,7 +367,7 @@ impl NodeConfig {
                         .map(|node| serde_json::from_value(node))
                         .collect();
                     let nodes = nodes?;
-                    //self.add_node_infos(&app, &nodes)?;
+                    self.add_node_infos(&app, &nodes)?;
                     result.insert(app, nodes);
                 } else {
                     anyhow::bail!(
@@ -480,8 +488,8 @@ impl NodeConfig {
 
             debug!("Loading config from db: app={}, nodes={:?}", app, nodes);
 
+            self.add_node_infos(app, &nodes)?;
             result.insert(app.to_owned(), nodes);
-            //self.add_node_infos(app, &nodes)?;
         }
 
         Ok(result)

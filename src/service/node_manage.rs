@@ -1,7 +1,6 @@
 use super::node_config::{self, NodeInfo};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::{mpsc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
@@ -91,7 +90,7 @@ impl AcqFilesOperation for AddAcqFiles {
             false => node_infos.iter().try_fold(
                 Vec::<NodeInfo>::new(),
                 |mut uart_node_infos, node_info| {
-                    if !node_config.add_node_info_exist(app, node_info)? {
+                    if !node_config.add_node_info_exist(app, node_info, is_init)? {
                         uart_node_infos.push(node_info.clone())
                     }
                     Ok(uart_node_infos)
@@ -442,28 +441,17 @@ impl NodeManage {
             node_config.node_config.load_config()?
         };
 
-        //for (app, node_infos) in node_config.node_config.get_all_app_node_infos() {
-        //    let node_infos: Vec<NodeInfo> = node_infos
-        //        .iter()
-        //        .map(|arc| (*arc).deref().clone())
-        //        .collect();
-        //    debug!("app: {}, node_infos: {:?}", app, node_infos);
-        //    self.operate_chunk_acq_files::<AddAcqFiles>(app, None, &node_infos, uart_msg_sender)?;
-        //}
-        for (app, node_infos) in nodes {
-            debug!("init app: {}, node_infos: {:?}", app, node_infos);
-            let spy_mqtt_req_info = MqttReqInfo::new(
-                format!("{}/set/request/{}/acqFiles", app, APP_NAME).as_str(),
-                "",
-                None,
-            );
-            self.operate_acq_files::<AddAcqFiles>(
-                app.as_str(),
-                Some(spy_mqtt_req_info),
-                node_infos.clone(),
-                uart_msg_sender,
-            )?;
+        let mut uart_node_infos = Vec::new();
+        for (_, node_infos) in nodes {
+            // 去重
+            for node_info in node_infos {
+                if !uart_node_infos.contains(&node_info) {
+                    uart_node_infos.push(node_info);
+                }
+            }
         }
+        // 仅下发到uart 内存中配置在load_config中已加载
+        self.operate_acq_files::<AddAcqFiles>("", None, uart_node_infos, uart_msg_sender)?;
 
         Ok(())
     }

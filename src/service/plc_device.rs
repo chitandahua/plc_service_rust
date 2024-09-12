@@ -141,8 +141,8 @@ impl PlcDevice {
     }
 
     pub fn available(&self) -> bool {
-        //self.online.load(Ordering::Relaxed) && self.plc_init.initailized()
-        true
+        self.online.load(Ordering::Relaxed) && self.plc_init.initailized()
+        //true
     }
 
     fn plc_power_on(&self) -> Result<()> {

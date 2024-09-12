@@ -154,8 +154,7 @@ impl MqttMsgHandler {
             let schema = topic_filters_clone
                 .iter()
                 .find(|&topic_filter| topic_filter.filter.matches(message.topic()))
-                .map(|topic_filter| topic_filter.schema.as_ref())
-                .flatten();
+                .and_then(|topic_filter| topic_filter.schema.as_ref());
 
             if let Some(schema) = schema {
                 match schema_check::schema_check(schema, message.payload()) {

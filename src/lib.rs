@@ -147,8 +147,8 @@ impl PlcService {
             //.update_address(device_info.esn());
             .update_address("123456789012".to_string());
 
-        plc_init.run()?;
-        //join_handler.push(plc_device.run()?);
+        //plc_init.run()?;
+        join_handler.push(plc_device.run()?);
 
         for handler in join_handler {
             handler.join().unwrap();
@@ -160,29 +160,31 @@ impl PlcService {
 }
 
 fn set_meter_config(meter_config: &mut MeterConfig, args: &Args) {
-    args.init_timeout
-        .map(|init_timeout| meter_config.init_timeout = init_timeout);
-    args.uart_timeout
-        .map(|uart_timeout| meter_config.uart_timeout = uart_timeout);
+    if let Some(init_timeout) = args.init_timeout {
+        meter_config.init_timeout = init_timeout;
+    }
+    if let Some(uart_timeout) = args.uart_timeout {
+        meter_config.uart_timeout = uart_timeout;
+    }
 
     // concurrent
-    args.concurrent_limit
-        .concurrency
-        .map(|concurrency| meter_config.concurrent.concurrency_limit = concurrency);
-    args.concurrent_limit
-        .timeout
-        .map(|timeout| meter_config.concurrent.timeout = timeout);
+    if let Some(concurrency) = args.concurrent_limit.concurrency {
+        meter_config.concurrent.concurrency_limit = concurrency;
+    }
+    if let Some(timeout) = args.concurrent_limit.timeout {
+        meter_config.concurrent.timeout = timeout;
+    }
 
     // meter
-    args.meter_reading
-        .aging_time
-        .map(|aging_time| meter_config.meter_reading.queue_aging_time = aging_time);
-    args.meter_reading
-        .max_addr_num
-        .map(|max_addr_num| meter_config.meter_reading.concurrent_addr = max_addr_num);
-    args.meter_reading
-        .queue_size
-        .map(|queue_size| meter_config.meter_reading.cache_queue_size = queue_size);
+    if let Some(aging_time) = args.meter_reading.aging_time {
+        meter_config.meter_reading.queue_aging_time = aging_time;
+    }
+    if let Some(max_addr_num) = args.meter_reading.max_addr_num {
+        meter_config.meter_reading.concurrent_addr = max_addr_num;
+    }
+    if let Some(queue_size) = args.meter_reading.queue_size {
+        meter_config.meter_reading.cache_queue_size = queue_size;
+    }
 }
 
 const APP_VERSION: &str = "ST01.000";

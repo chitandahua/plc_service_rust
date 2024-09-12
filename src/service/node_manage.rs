@@ -277,7 +277,7 @@ impl NodeManage {
         let app = MqttTopic::get_app(message.topic());
 
         let node_config = self.node_conf.lock().unwrap();
-        let node_infos = match T::parse_node_infos(&node_config.node_config, &message, &app) {
+        let node_infos = match T::parse_node_infos(&node_config.node_config, &message, app) {
             Err(e) => {
                 mqtt_msg_sender.send(MqttMessage::new_with_msg_status_reason(
                     message,

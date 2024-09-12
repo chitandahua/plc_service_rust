@@ -74,7 +74,7 @@ impl TryFrom<AppData> for ConcurrentReadMeterResponse {
         let data_units = app_data.data_units.unwrap();
         Ok(ConcurrentReadMeterResponse {
             protocol_type: data_units[0],
-            message_len: message_len as u16,
+            message_len,
             message: data_units[RES_PREFIX_LEN..].to_vec(),
         })
     }

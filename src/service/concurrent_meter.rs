@@ -274,18 +274,16 @@ impl ConcurrentMeter {
                         )
                     }
                 }
+            } else if Self::concurrent_addr_num(sample_cache.deref())
+                >= self.concurrent_meter.meter_config.concurrent_addr
+            {
+                Err(ConcurrentMeterError::AddrLimit(
+                    self.concurrent_meter.meter_config.concurrent_addr,
+                )
+                .into())
             } else {
-                if Self::concurrent_addr_num(sample_cache.deref())
-                    >= self.concurrent_meter.meter_config.concurrent_addr
-                {
-                    Err(ConcurrentMeterError::AddrLimit(
-                        self.concurrent_meter.meter_config.concurrent_addr,
-                    )
-                    .into())
-                } else {
-                    sample_cache.insert(acq_addr.to_string(), SampleCache::new());
-                    Self::mqtt_meter_reading_handler(message, master_address, concurrent_msg_sender)
-                }
+                sample_cache.insert(acq_addr.to_string(), SampleCache::new());
+                Self::mqtt_meter_reading_handler(message, master_address, concurrent_msg_sender)
             }
         };
 

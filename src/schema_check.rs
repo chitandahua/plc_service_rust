@@ -21,8 +21,9 @@ pub fn schema_check(schema: &JSONSchema, payload: &str) -> Result<()> {
     let payload: serde_json::Value =
         serde_json::from_str(payload).context("parse payload failed")?;
 
-    if let Err(errors) = schema.validate(&payload) {
-        for error in errors {
+    if let Err(mut errors) = schema.validate(&payload) {
+        if let Some(error) = errors.next() {
+            //for error in errors {
             //info!("Validation error: {}", error);
             //info!("Instance path: {}", error.instance_path);
 

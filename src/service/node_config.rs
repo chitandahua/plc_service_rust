@@ -120,10 +120,7 @@ impl NodeConfig {
         node: &NodeInfo,
         is_init: bool,
     ) -> Result<bool> {
-        let app_data = self
-            .node_data
-            .entry(app.to_string())
-            .or_insert_with(Vec::new);
+        let app_data = self.node_data.entry(app.to_string()).or_default();
 
         if let Some(existing) = app_data.iter().find(|n| n.acq_addr == node.acq_addr) {
             //existing.pro_type = node.pro_type.clone();
@@ -162,13 +159,13 @@ impl NodeConfig {
         self.global_node_config.add_node_info(&node);
         self.node_data
             .entry(app.to_string())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(node);
     }
 
     // 当前仅初始化时调用
     fn add_node_info(&mut self, app: &str, node: NodeInfo) -> Result<()> {
-        if false == self.add_node_info_exist(app, &node, true)? {
+        if !(self.add_node_info_exist(app, &node, true)?) {
             self.add_node_info_checked(app, node);
         }
 
@@ -268,10 +265,7 @@ impl NodeConfig {
     }
 
     pub fn get_all_node_infos(&self, app: &str) -> Vec<Arc<NodeInfo>> {
-        self.node_data
-            .get(app)
-            .map(|app_data| app_data.clone())
-            .unwrap_or_default()
+        self.node_data.get(app).cloned().unwrap_or_default()
     }
 
     pub fn _get_all_app_node_infos(&self) -> &HashMap<String, Vec<Arc<NodeInfo>>> {
@@ -362,10 +356,8 @@ impl NodeConfig {
         if let serde_json::Value::Object(map) = value {
             for (app, nodes) in map {
                 if let serde_json::Value::Array(nodes) = nodes {
-                    let nodes: std::result::Result<Vec<NodeInfo>, serde_json::Error> = nodes
-                        .into_iter()
-                        .map(|node| serde_json::from_value(node))
-                        .collect();
+                    let nodes: std::result::Result<Vec<NodeInfo>, serde_json::Error> =
+                        nodes.into_iter().map(serde_json::from_value).collect();
                     let nodes = nodes?;
                     self.add_node_infos(&app, &nodes)?;
                     result.insert(app, nodes);
@@ -482,8 +474,7 @@ impl NodeConfig {
                         pro_type: row.get(1)?,
                     })
                 })?;
-                let nodes = nodes.filter_map(|result| result.ok()).collect();
-                nodes
+                nodes.filter_map(|result| result.ok()).collect()
             };
 
             debug!("Loading config from db: app={}, nodes={:?}", app, nodes);

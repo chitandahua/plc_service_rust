@@ -154,22 +154,20 @@ impl From<InfoField> for [u8; INFO_FIELD_SIZE] {
         let mut bytes = [0u8; INFO_FIELD_SIZE];
         match info {
             InfoField::Down(down) => {
-                bytes[0] = (down.route_flag as u8)
-                    | ((down.node_flag as u8) << 1)
-                    | ((down.comm_model_mark as u8) << 2)
-                    | ((down.conflict_check as u8) << 3)
+                bytes[0] = down.route_flag
+                    | (down.node_flag << 1)
+                    | (down.comm_model_mark << 2)
+                    | (down.conflict_check << 3)
                     | (down.relay_level << 4);
                 bytes[1] = down.channel_flag | (down.ecc << 4);
                 bytes[2] = down.answer_bytes;
                 let speed_bytes = down.speed.to_le_bytes();
                 bytes[3] = speed_bytes[0];
-                bytes[4] = speed_bytes[1] & 0x7F | ((down.speed_unit_flag as u8) << 7);
+                bytes[4] = speed_bytes[1] & 0x7F | (down.speed_unit_flag << 7);
                 bytes[5] = down.seq_num;
             }
             InfoField::Up(up) => {
-                bytes[0] = (up.route_flag as u8)
-                    | ((up.comm_model_mark as u8) << 2)
-                    | (up.relay_level << 4);
+                bytes[0] = up.route_flag | (up.comm_model_mark << 2) | (up.relay_level << 4);
                 bytes[1] = up.channel_flag;
                 bytes[2] = up.line_mark | (up.meter_feature << 4);
                 bytes[3] = up.cmd_signal_quality | (up.res_signal_quality << 4);

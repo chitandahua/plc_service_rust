@@ -290,7 +290,7 @@ impl Frame {
 
         // header 不匹配的则直接移除
         while src.position() < end as u64 && src.get_ref()[src.position() as usize] != HEADER {
-            src.set_position((src.position() + 1) as u64);
+            src.set_position(src.position() + 1);
         }
 
         // 判断长度

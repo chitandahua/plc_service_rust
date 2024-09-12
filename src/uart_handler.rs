@@ -172,10 +172,11 @@ impl UartTimeoutHandler {
                     &self.mqtt_msg_sender,
                 )?;
             }
-            _ => match req_info.into_mqtt_req_info() {
-                Some(mqtt_req_info) => self.mqtt_timeout_cb(mqtt_req_info),
-                None => {}
-            },
+            _ => {
+                if let Some(mqtt_req_info) = req_info.into_mqtt_req_info() {
+                    self.mqtt_timeout_cb(mqtt_req_info)
+                }
+            }
         }
 
         Ok(())

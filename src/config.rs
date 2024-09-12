@@ -61,8 +61,8 @@ pub struct UartConfig {
 fn read_config<T: DeserializeOwned>(config_path: &PathBuf) -> Result<T> {
     let config = File::open(config_path)
         .with_context(|| format!("Failed to open config file {}", config_path.display()))?;
-    Ok(serde_json::from_reader(config)
-        .with_context(|| format!("Failed to parse config file {}", config_path.display()))?)
+    serde_json::from_reader(config)
+        .with_context(|| format!("Failed to parse config file {}", config_path.display()))
 }
 
 pub struct Config {

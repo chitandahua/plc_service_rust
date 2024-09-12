@@ -32,7 +32,7 @@ mod uart_agent;
 use uart_agent::{UartAgent, UartHandler};
 
 mod service;
-//use service::{DeviceInfo, PlcDevice};
+use service::PlcDevice;
 use service::{ModuleInfo, ModuleService, PlcInit};
 
 mod uart_handler;
@@ -112,8 +112,18 @@ impl PlcService {
             plc_init.clone(),
         );
 
-        let handler = Handler::new(msg_sender, mqtt_msg_handler.subscribe_topics());
         let consecutive_timeouts = Arc::new(AtomicU8::new(0));
+        let plc_device = PlcDevice::new(
+            self.plc_device_config.port.parse()?,
+            mqtt_msg_sender.clone(),
+            plc_init,
+            consecutive_timeouts.clone(),
+        );
+        let handler = Handler::new(
+            msg_sender,
+            mqtt_msg_handler.subscribe_topics(),
+            plc_device.clone(),
+        );
 
         let mut join_handler = self.mqtt_client.run(handler, mqtt_msg_receiver)?;
         join_handler.extend(self.uart_agent.run(
@@ -122,7 +132,7 @@ impl PlcService {
             uart_handler,
             self.timer.clone(),
             uart_timeout_handler,
-            consecutive_timeouts.clone(),
+            consecutive_timeouts,
         )?);
         join_handler.extend(mqtt_msg_handler.run(self.module_service.clone())?);
 
@@ -135,14 +145,8 @@ impl PlcService {
             //.update_address(device_info.esn());
             .update_address("123456789012".to_string());
 
-        plc_init.run()?;
-        //let plc_device = PlcDevice::new(
-        //    self.plc_device_config.port.parse()?,
-        //    mqtt_msg_sender.clone(),
-        //    plc_init,
-        //    consecutive_timeouts,
-        //);
-        //join_handler.push(plc_device.run()?);
+        //plc_init.run()?;
+        join_handler.push(plc_device.run()?);
 
         for handler in join_handler {
             handler.join().unwrap();
@@ -200,4 +204,6 @@ pub fn get_version_info() {
 pub enum MqttResponseError {
     #[error("request timeout")]
     Timeout,
+    #[error("model is pullout or initializing")]
+    ModelOffline,
 }

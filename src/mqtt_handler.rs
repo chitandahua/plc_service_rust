@@ -1,5 +1,6 @@
+use crate::mqtt_message::Status;
 use crate::service::{MasterAddress, ModuleInfo, ModuleService};
-use crate::{MqttHandler, Result};
+use crate::{MqttHandler, MqttResponseError, PlcDevice, Result};
 use crate::{MqttMessage, UartMessage};
 
 use paho_mqtt::TopicFilter;
@@ -240,11 +241,20 @@ impl MqttMsgHandler {
 pub struct Handler {
     msg_sender: mpsc::Sender<MqttMessage>,
     topics: Vec<String>,
+    plc_device: PlcDevice,
 }
 
 impl Handler {
-    pub fn new(msg_sender: mpsc::Sender<MqttMessage>, topics: Vec<String>) -> Self {
-        Self { msg_sender, topics }
+    pub fn new(
+        msg_sender: mpsc::Sender<MqttMessage>,
+        topics: Vec<String>,
+        plc_device: PlcDevice,
+    ) -> Self {
+        Self {
+            msg_sender,
+            topics,
+            plc_device,
+        }
     }
 }
 
@@ -255,6 +265,14 @@ impl MqttHandler for Handler {
             message.topic(),
             message.payload()
         );
+
+        if !self.plc_device.available() {
+            return Ok(Some(MqttMessage::new_with_msg_status_reason(
+                message,
+                Status::Failure,
+                MqttResponseError::ModelOffline,
+            )));
+        }
 
         self.msg_sender.send(message)?;
         Ok(None)

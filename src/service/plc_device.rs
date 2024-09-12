@@ -83,6 +83,7 @@ impl State for Destroy {
     }
 }
 
+#[derive(Clone)]
 pub struct PlcDevice {
     port: PathBuf,
     mqtt_msg_sender: mpsc::Sender<MqttMessage>,
@@ -137,6 +138,10 @@ impl PlcDevice {
         });
 
         Ok(handler)
+    }
+
+    pub fn available(&self) -> bool {
+        self.online.load(Ordering::Relaxed) && self.plc_init.initailized()
     }
 
     fn plc_power_on(&self) -> Result<()> {

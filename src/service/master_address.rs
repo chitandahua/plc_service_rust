@@ -134,11 +134,23 @@ impl MasterAddress {
     }
 
     pub fn init(&self, mqtt_msg_handler: &mut MqttMsgHandler) {
+        use crate::config::SCHEMA_PATH;
+        use crate::schema_check;
         const ADDRESS_OBJECT: &str = "/masterNode";
         let get_address_topic = format!("{}{}{}", "+/get/request/", APP_NAME, ADDRESS_OBJECT);
-        mqtt_msg_handler.add_topic_filter(get_address_topic, MqttTopicType::GetMasterAddress);
+        let schema = schema_check::parse_schema(SCHEMA_PATH.join("get_address_schema.json")).ok();
+        mqtt_msg_handler.add_topic_filter(
+            get_address_topic,
+            MqttTopicType::GetMasterAddress,
+            schema,
+        );
 
         let set_address_topic = format!("{}{}{}", "+/set/request/", APP_NAME, ADDRESS_OBJECT);
-        mqtt_msg_handler.add_topic_filter(set_address_topic, MqttTopicType::SetMasterAddress);
+        let schema = schema_check::parse_schema(SCHEMA_PATH.join("set_address_schema.json")).ok();
+        mqtt_msg_handler.add_topic_filter(
+            set_address_topic,
+            MqttTopicType::SetMasterAddress,
+            schema,
+        );
     }
 }

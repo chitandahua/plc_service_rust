@@ -31,6 +31,8 @@ use serial_port::UartPort;
 mod uart_agent;
 use uart_agent::{UartAgent, UartHandler};
 
+mod schema_check;
+
 mod service;
 use service::PlcDevice;
 use service::{ModuleInfo, ModuleService, PlcInit};
@@ -116,7 +118,7 @@ impl PlcService {
         let plc_device = PlcDevice::new(
             self.plc_device_config.port.parse()?,
             mqtt_msg_sender.clone(),
-            plc_init,
+            plc_init.clone(),
             consecutive_timeouts.clone(),
         );
         let handler = Handler::new(
@@ -145,8 +147,8 @@ impl PlcService {
             //.update_address(device_info.esn());
             .update_address("123456789012".to_string());
 
-        //plc_init.run()?;
-        join_handler.push(plc_device.run()?);
+        plc_init.run()?;
+        //join_handler.push(plc_device.run()?);
 
         for handler in join_handler {
             handler.join().unwrap();
@@ -206,4 +208,6 @@ pub enum MqttResponseError {
     Timeout,
     #[error("model is pullout or initializing")]
     ModelOffline,
+    #[error("invalid json request: {0}")]
+    InvalidJson(String),
 }

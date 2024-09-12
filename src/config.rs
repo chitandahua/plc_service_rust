@@ -78,7 +78,7 @@ pub static APP_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
 });
 //static PROJECT_PATH: LazyLock<PathBuf> = LazyLock::new(|| APP_PATH.join("project").to_path_buf());
 static PROJECT_PATH: LazyLock<PathBuf> = LazyLock::new(|| APP_PATH.clone());
-//static SCHEMA_PATH: LazyLock<PathBuf> = LazyLock::new(|| APP_PATH.join("schema").to_path_buf());
+pub static SCHEMA_PATH: LazyLock<PathBuf> = LazyLock::new(|| APP_PATH.join("schema").to_path_buf());
 
 static MQTT_CONFIG_PATH: LazyLock<PathBuf> =
     LazyLock::new(|| PROJECT_PATH.join("mqtt_server.json").to_path_buf());

@@ -65,8 +65,12 @@ impl ModuleInfo {
     }
 
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
+        use crate::config::SCHEMA_PATH;
+        use crate::schema_check;
         let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/modeInfo");
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetModuleInfo);
+        let schema =
+            schema_check::parse_schema(SCHEMA_PATH.join("get_module_info_schema.json")).ok();
+        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetModuleInfo, schema);
     }
 }
 

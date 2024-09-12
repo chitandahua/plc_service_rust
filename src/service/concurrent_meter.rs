@@ -124,8 +124,16 @@ impl ConcurrentMeter {
     }
 
     pub fn init(&self, mqtt_msg_handler: &mut MqttMsgHandler) {
+        use crate::config::SCHEMA_PATH;
+        use crate::schema_check;
         let concurrent_meter_topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/concurrent");
-        mqtt_msg_handler.add_topic_filter(concurrent_meter_topic, MqttTopicType::ConcurrentMeter);
+        let schema =
+            schema_check::parse_schema(SCHEMA_PATH.join("concurrent_meter_schema.json")).ok();
+        mqtt_msg_handler.add_topic_filter(
+            concurrent_meter_topic,
+            MqttTopicType::ConcurrentMeter,
+            schema,
+        );
     }
 
     fn concurrent_addr_num(sample_cache: &HashMap<String, SampleCache>) -> usize {

@@ -210,6 +210,8 @@ impl NodeManage {
     }
 
     pub fn init(&self, mqtt_msg_handler: &mut MqttMsgHandler) {
+        use crate::config::SCHEMA_PATH;
+        use crate::schema_check;
         const ACQ_FILES_OBJECT: &str = "/acqFiles";
         let set_acq_files_topic = format!("{}{}{}", "+/set/request/", APP_NAME, ACQ_FILES_OBJECT);
         let get_acq_files_topic = format!("{}{}{}", "+/get/request/", APP_NAME, ACQ_FILES_OBJECT);
@@ -217,15 +219,35 @@ impl NodeManage {
         let del_acq_files_topic = format!("{}{}{}", "+/set/request/", APP_NAME, "/delAcqFiles");
         let clear_acq_files_topic = format!("{}{}{}", "+/set/request/", APP_NAME, "/clearAcqFiles");
 
-        let topic_filters = vec![
-            (set_acq_files_topic, MqttTopicType::AddAcqFiles),
-            (get_acq_files_topic, MqttTopicType::GetAcqFiles),
-            (get_acq_files_num_topic, MqttTopicType::GetAcqFilesNum),
-            (del_acq_files_topic, MqttTopicType::DelAcqFiles),
-            (clear_acq_files_topic, MqttTopicType::ClearAcqFiles),
-        ];
+        mqtt_msg_handler.add_topic_filter(
+            set_acq_files_topic,
+            MqttTopicType::AddAcqFiles,
+            schema_check::parse_schema(SCHEMA_PATH.join("add_node_schema.json")).ok(),
+        );
 
-        mqtt_msg_handler.add_topic_filters(topic_filters);
+        mqtt_msg_handler.add_topic_filter(
+            get_acq_files_topic,
+            MqttTopicType::GetAcqFiles,
+            schema_check::parse_schema(SCHEMA_PATH.join("query_node_schema.json")).ok(),
+        );
+
+        mqtt_msg_handler.add_topic_filter(
+            get_acq_files_num_topic,
+            MqttTopicType::GetAcqFilesNum,
+            schema_check::parse_schema(SCHEMA_PATH.join("query_node_num_schema.json")).ok(),
+        );
+
+        mqtt_msg_handler.add_topic_filter(
+            del_acq_files_topic,
+            MqttTopicType::DelAcqFiles,
+            schema_check::parse_schema(SCHEMA_PATH.join("del_node_schema.json")).ok(),
+        );
+
+        mqtt_msg_handler.add_topic_filter(
+            clear_acq_files_topic,
+            MqttTopicType::ClearAcqFiles,
+            schema_check::parse_schema(SCHEMA_PATH.join("clear_node_schema.json")).ok(),
+        );
     }
 
     fn wait_operation_result(&self, mut node_conf: MutexGuard<'_, NodeConfig>) -> Result<()> {

@@ -1,8 +1,9 @@
 use crate::mqtt_message::Status;
 use crate::service::{MasterAddress, ModuleInfo, ModuleService};
-use crate::{MqttHandler, MqttResponseError, PlcDevice, Result};
+use crate::{schema_check, MqttHandler, MqttResponseError, PlcDevice, Result};
 use crate::{MqttMessage, UartMessage};
 
+use jsonschema::JSONSchema;
 use paho_mqtt::TopicFilter;
 use std::sync::atomic::AtomicU64;
 use std::sync::{mpsc, Condvar};
@@ -102,6 +103,7 @@ struct MqttTopicFilter {
     topic: String,
     mqtt_topic_type: MqttTopicType,
     filter: TopicFilter,
+    schema: Option<JSONSchema>,
 }
 
 pub struct MqttMsgHandler {
@@ -141,9 +143,37 @@ impl MqttMsgHandler {
             msg_receiver,
         } = self;
         let priority_queue_clone = priority_queue.clone();
+        let mqtt_msg_sender_clone = mqtt_msg_sender.clone();
+        let topic_filters = Arc::new(topic_filters);
+        let topic_filters_clone = topic_filters.clone();
 
         let msg_handle = thread::spawn(move || loop {
             let message = msg_receiver.recv().unwrap();
+
+            // schema check
+            let schema = topic_filters_clone
+                .iter()
+                .find(|&topic_filter| topic_filter.filter.matches(message.topic()))
+                .map(|topic_filter| topic_filter.schema.as_ref())
+                .flatten();
+
+            if let Some(schema) = schema {
+                match schema_check::schema_check(schema, message.payload()) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        error!("schema check failed: {}", e);
+                        mqtt_msg_sender_clone
+                            .send(MqttMessage::new_with_msg_status_reason(
+                                message,
+                                Status::Failure,
+                                MqttResponseError::InvalidJson(e.to_string()),
+                            ))
+                            .unwrap();
+                        continue;
+                    }
+                }
+            }
+
             let priority_message = PriorityMessage::new(message);
             priority_queue_clone.push(priority_message);
         });
@@ -222,19 +252,19 @@ impl MqttMsgHandler {
             .collect()
     }
 
-    pub fn add_topic_filter(&mut self, topic: String, mqtt_topic_type: MqttTopicType) {
+    pub fn add_topic_filter(
+        &mut self,
+        topic: String,
+        mqtt_topic_type: MqttTopicType,
+        schema: Option<JSONSchema>,
+    ) {
         let filter = TopicFilter::new(&topic).unwrap();
         self.topic_filters.push(MqttTopicFilter {
             topic,
             mqtt_topic_type,
             filter,
+            schema,
         });
-    }
-
-    pub fn add_topic_filters(&mut self, topic_filters: Vec<(String, MqttTopicType)>) {
-        topic_filters
-            .into_iter()
-            .for_each(|(topic, mqtt_topic_type)| self.add_topic_filter(topic, mqtt_topic_type));
     }
 }
 

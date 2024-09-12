@@ -132,7 +132,7 @@ impl PlcInit {
         // 清空档案
         self.services
             .node_manage
-            .clear_acq_files(&self.uart_msg_sender)?;
+            .init_clear_acq_files(&self.uart_msg_sender)?;
 
         // 加载档案
         self.services

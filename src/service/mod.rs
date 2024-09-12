@@ -1,8 +1,8 @@
 mod concurrent_meter;
 pub use concurrent_meter::ConcurrentMeter;
 
-mod device_info;
-pub use device_info::DeviceInfo;
+//mod device_info;
+//pub use device_info::DeviceInfo;
 
 mod module_info;
 pub use module_info::ModuleInfo;
@@ -22,8 +22,8 @@ pub use parse_response::UartResponse;
 mod plc_init;
 pub use plc_init::PlcInit;
 
-mod plc_device;
-pub use plc_device::PlcDevice;
+//mod plc_device;
+//pub use plc_device::PlcDevice;
 
 use std::sync::Arc;
 use timer::Timer;

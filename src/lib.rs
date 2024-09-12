@@ -32,7 +32,8 @@ mod uart_agent;
 use uart_agent::{UartAgent, UartHandler};
 
 mod service;
-use service::{DeviceInfo, ModuleInfo, ModuleService, PlcDevice, PlcInit};
+//use service::{DeviceInfo, PlcDevice};
+use service::{ModuleInfo, ModuleService, PlcInit};
 
 mod uart_handler;
 use uart_handler::{UartMsgHandler, UartTimeoutHandler};

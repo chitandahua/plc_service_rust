@@ -418,7 +418,7 @@ impl NodeManage {
     }
 
     // 仅初始化时调用
-    pub fn clear_acq_files(&self, uart_msg_sender: &mpsc::Sender<UartMessage>) -> Result<()> {
+    pub fn init_clear_acq_files(&self, uart_msg_sender: &mpsc::Sender<UartMessage>) -> Result<()> {
         let frame = Frame::new_request(None, InitRequest::new(InitOperation::Params));
         let req_info = ReqInfo::new(&frame, None);
 

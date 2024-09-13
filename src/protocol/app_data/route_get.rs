@@ -1,11 +1,13 @@
 use anyhow::ensure;
+use num_enum::TryFromPrimitive;
 
 use crate::protocol::app_data::{Address, Afn, AppDataError};
 use crate::protocol::AppData;
 use crate::Result;
 
 // AFN 10H
-#[derive(Debug)]
+#[derive(Debug, TryFromPrimitive)]
+#[repr(u8)]
 pub enum RouteQuery {
     NodeNumber = 1,
     NodeInfo = 2,

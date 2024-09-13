@@ -9,16 +9,16 @@ mod answer;
 pub use answer::{AnswerFn, ConfirmResponse, DenyResponse};
 
 mod ctrl_cmd;
-pub use ctrl_cmd::AddressSetRequest;
+pub use ctrl_cmd::{AddressSetRequest, CtrlCmd};
 
 mod init;
 pub use init::{InitOperation, InitRequest};
 
 mod meter_reading;
-pub use meter_reading::{ConcurrentReadMeterRequest, ConcurrentReadMeterResponse};
+pub use meter_reading::{ConcurrentReadMeterRequest, ConcurrentReadMeterResponse, MeterReading};
 
 mod query_data;
-pub use query_data::{ModuleInfoRequest, ModuleInfoResponse};
+pub use query_data::{ModuleInfoRequest, ModuleInfoResponse, QueryData};
 
 //mod route_data_forward;
 //pub use route_data_forward::{DataForward, MonitorNodeRequest, MonitorNodeResponse};
@@ -26,11 +26,11 @@ pub use query_data::{ModuleInfoRequest, ModuleInfoResponse};
 mod route_get;
 pub use route_get::{
     NodeDetail, QueryNodeInfoRequest, QueryNodeInfoResponse, QueryNodeNumberRequest,
-    QueryNodeNumberResponse,
+    QueryNodeNumberResponse, RouteQuery,
 };
 
 mod route_set;
-pub use route_set::{AddNodeRequest, DelNodeRequest, NodeInfo};
+pub use route_set::{AddNodeRequest, DelNodeRequest, NodeInfo, RouteSet};
 
 pub const ADDR_LEN: usize = 6;
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -93,7 +93,9 @@ impl IntoIterator for Address {
 const AFN_SIZE: usize = 1;
 const DATA_FLAG_SIZE: usize = 2;
 
-#[derive(Debug, PartialEq, Clone, IntoPrimitive, TryFromPrimitive, strum_macros::Display)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Copy, IntoPrimitive, TryFromPrimitive, strum_macros::Display,
+)]
 #[repr(u8)]
 pub enum Afn {
     Answer = 0x00,
@@ -186,7 +188,7 @@ impl AppData {
     }
 
     pub fn afn(&self) -> Afn {
-        self.afn.clone()
+        self.afn
     }
 
     pub fn fn_num(&self) -> u8 {

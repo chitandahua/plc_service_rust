@@ -1,4 +1,5 @@
 use anyhow::ensure;
+use num_enum::TryFromPrimitive;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
@@ -7,6 +8,8 @@ use crate::protocol::AppData;
 use crate::Result;
 
 // AFN F1H
+#[derive(Debug, TryFromPrimitive)]
+#[repr(u8)]
 pub enum MeterReading {
     ActiveReadMeter = 1,
 }

@@ -1,8 +1,10 @@
+use num_enum::TryFromPrimitive;
+
 use crate::protocol::app_data::Afn;
 use crate::protocol::AppData;
 
 // AFN 01H
-#[derive(Debug)]
+#[derive(Debug, TryFromPrimitive)]
 #[repr(u8)]
 pub enum InitOperation {
     Hard = 1,

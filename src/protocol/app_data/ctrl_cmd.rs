@@ -1,7 +1,11 @@
+use num_enum::TryFromPrimitive;
+
 use crate::protocol::app_data::{Address, Afn};
 use crate::protocol::AppData;
 
 // AFN 05H
+#[derive(Debug, TryFromPrimitive)]
+#[repr(u8)]
 pub enum CtrlCmd {
     SetAddress = 1,
 }

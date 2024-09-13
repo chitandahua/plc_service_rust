@@ -1,5 +1,6 @@
 use anyhow::ensure;
 use chrono::NaiveDate;
+use num_enum::TryFromPrimitive;
 use std::fmt;
 
 use crate::protocol::app_data::{Address, Afn, AppDataError};
@@ -8,7 +9,7 @@ use crate::protocol::AppData;
 use crate::Result;
 
 // AFN 03H
-#[derive(Debug)]
+#[derive(Debug, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 pub enum QueryData {
     GetModuleInfo = 10,

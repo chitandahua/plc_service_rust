@@ -2,7 +2,9 @@ use std::sync::{mpsc, Arc};
 use tracing::debug;
 
 use crate::mqtt_message::Status;
-use crate::protocol::app_data::Afn;
+use crate::protocol::app_data::{
+    Afn, CtrlCmd, InitOperation, MeterReading, QueryData, RouteQuery, RouteSet,
+};
 use crate::request_info::{MqttReqInfo, ReqInfo};
 use crate::service::{ModuleService, PlcInit};
 use crate::{ModuleInfo, MqttMessage, MqttPayload};
@@ -34,66 +36,130 @@ impl UartMsgHandler {
     }
 
     fn uart_slave_report_handler(&mut self, message: UartMessage) -> Result<()> {
-        match message.req_info.frame_key().to_tuple() {
-            (Afn::QueryData, 10) => {
-                match ModuleInfo::slave_module_info_report(message, &self.uart_msg_sender) {
-                    Ok(address) => self.plc_init.update_address(address),
-                    Err(e) => self.plc_init.notify(Err(e)),
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        match afn {
+            Afn::QueryData => {
+                let fn_num = QueryData::try_from(fn_num)
+                    .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
+                match fn_num {
+                    QueryData::GetModuleInfo => {
+                        match ModuleInfo::slave_module_info_report(message, &self.uart_msg_sender) {
+                            Ok(address) => self.plc_init.update_address(address),
+                            Err(e) => self.plc_init.notify(Err(e)),
+                        }
+                    }
                 }
             }
-            _ => todo!(),
+            _ => anyhow::bail!(UartHandlerError::UnsupportedAfn(afn)),
         }
 
         Ok(())
     }
 
     fn uart_init_handler(&mut self, message: UartMessage) -> Result<()> {
-        let key = message.req_info.frame_key().to_tuple();
-        if key == (Afn::QueryData, 10) {
-            match ModuleInfo::init_module_info_response(message) {
-                Ok(address) => self.plc_init.update_address(address),
-                Err(e) => self.plc_init.notify(Err(e)),
+        let init_err_msg = "uart init invalid message";
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        if afn == Afn::QueryData {
+            let fn_num = QueryData::try_from(fn_num).expect(init_err_msg);
+            match fn_num {
+                QueryData::GetModuleInfo => match ModuleInfo::init_module_info_response(message) {
+                    Ok(address) => self.plc_init.update_address(address),
+                    Err(e) => self.plc_init.notify(Err(e)),
+                },
             }
         } else {
-            let result = match key {
-                (Afn::CtrlCmd, 1) => self
-                    .services
-                    .master_address
-                    .init_set_address_response(message),
-                (Afn::RouteSet, 1) => self.services.node_manage.uart_add_acq_files(message),
-                (Afn::Init, 2) => self.services.node_manage.uart_clear_acq_files(message),
-                _ => unreachable!("uart init invalid message"),
+            let result = match afn {
+                Afn::CtrlCmd => {
+                    let fn_num = CtrlCmd::try_from(fn_num).expect(init_err_msg);
+                    match fn_num {
+                        CtrlCmd::SetAddress => self
+                            .services
+                            .master_address
+                            .init_set_address_response(message),
+                    }
+                }
+                Afn::RouteSet => {
+                    let fn_num = RouteSet::try_from(fn_num).expect(init_err_msg);
+                    match fn_num {
+                        RouteSet::AddNode => self.services.node_manage.uart_add_acq_files(message),
+                        _ => unreachable!(),
+                    }
+                }
+                Afn::Init => {
+                    let fn_num = InitOperation::try_from(fn_num).expect(init_err_msg);
+                    match fn_num {
+                        InitOperation::Params => {
+                            self.services.node_manage.uart_clear_acq_files(message)
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                _ => unreachable!(),
             };
             self.plc_init.notify(result);
+        }
+
+        Ok(())
+    }
+
+    fn uart_query_data_handler(&mut self, message: UartMessage) -> Result<()> {
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        let fn_num = QueryData::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
+        match fn_num {
+            QueryData::GetModuleInfo => {
+                ModuleInfo::module_info_response(message, &self.mqtt_msg_sender)
+            }
+        }
+    }
+
+    fn uart_ctrl_cmd_handler(&mut self, message: UartMessage) -> Result<()> {
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        let fn_num = CtrlCmd::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
+        match fn_num {
+            CtrlCmd::SetAddress => self
+                .services
+                .master_address
+                .uart_set_address(message, &self.mqtt_msg_sender)?,
         }
         Ok(())
     }
 
-    fn uart_mqtt_handler(&mut self, message: UartMessage) -> Result<()> {
-        match message.req_info.frame_key().to_tuple() {
-            (Afn::QueryData, 10) => {
-                ModuleInfo::module_info_response(message, &self.mqtt_msg_sender)?;
-            }
-            (Afn::CtrlCmd, 1) => {
-                self.services
-                    .master_address
-                    .uart_set_address(message, &self.mqtt_msg_sender)?;
-            }
-            (Afn::RouteSet, 1) => {
-                self.services.node_manage.uart_add_acq_files(message)?;
-            }
-            (Afn::RouteSet, 2) => {
-                self.services.node_manage.uart_del_acq_files(message)?;
-            }
-            (Afn::RouteGet, 1) => self
+    fn uart_route_set_handler(&mut self, message: UartMessage) -> Result<()> {
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        let fn_num = RouteSet::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
+        match fn_num {
+            RouteSet::AddNode => self.services.node_manage.uart_add_acq_files(message)?,
+            RouteSet::DelNode => self.services.node_manage.uart_del_acq_files(message)?,
+        }
+        Ok(())
+    }
+
+    fn uart_route_query_handler(&mut self, message: UartMessage) -> Result<()> {
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        let fn_num = RouteQuery::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
+        match fn_num {
+            RouteQuery::NodeNumber => self
                 .services
                 .node_manage
                 .uart_get_acq_files_number(message, &self.mqtt_msg_sender)?,
-            (Afn::RouteGet, 2) => self
+            RouteQuery::NodeInfo => self
                 .services
                 .node_manage
                 .uart_get_acq_files(message, &self.mqtt_msg_sender)?,
-            (Afn::CocurrentReadMeter, 1) => {
+        }
+        Ok(())
+    }
+
+    fn uart_read_meter_handler(&mut self, message: UartMessage) -> Result<()> {
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        let fn_num = MeterReading::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
+        match fn_num {
+            MeterReading::ActiveReadMeter => {
                 let master_address = self.services.master_address.get_master_address();
                 self.services.concurrent_meter.uart_meter_reading(
                     message,
@@ -102,7 +168,19 @@ impl UartMsgHandler {
                     &self.concurrent_msg_sender,
                 )?;
             }
-            _ => todo!(),
+        }
+        Ok(())
+    }
+
+    fn uart_mqtt_handler(&mut self, message: UartMessage) -> Result<()> {
+        let afn = message.req_info.frame_key().afn();
+        match afn {
+            Afn::CtrlCmd => self.uart_ctrl_cmd_handler(message)?,
+            Afn::QueryData => self.uart_query_data_handler(message)?,
+            Afn::RouteSet => self.uart_route_set_handler(message)?,
+            Afn::RouteGet => self.uart_route_query_handler(message)?,
+            Afn::CocurrentReadMeter => self.uart_read_meter_handler(message)?,
+            _ => anyhow::bail!(UartHandlerError::UnsupportedAfn(afn)),
         }
 
         Ok(())
@@ -113,7 +191,7 @@ impl UartHandler for UartMsgHandler {
     fn uart_msg_handler(&mut self, message: UartMessage) -> Result<()> {
         debug!(
             "uart msg response handler: AFN: {:02x}, Fn: {}",
-            message.req_info.frame_key().afn(),
+            message.req_info.frame_key().afn() as u8,
             message.req_info.frame_key().fn_num()
         );
 
@@ -181,4 +259,12 @@ impl UartTimeoutHandler {
 
         Ok(())
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum UartHandlerError {
+    #[error("unsupported afn: {:#02x}", *.0 as u8)]
+    UnsupportedAfn(Afn),
+    #[error("unsupported afn: {:#02x}, fn: {1}", *.0 as u8)]
+    UnsupportedAfnFn(Afn, u8),
 }

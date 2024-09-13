@@ -4,15 +4,15 @@ use crate::MqttTopic;
 use std::any::Any;
 
 // TODO 使用enum？
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct FrameKey(u8, u8);
+#[derive(Debug, PartialEq, Eq)]
+pub struct FrameKey(Afn, u8);
 
 impl FrameKey {
-    pub fn new(afn: u8, fn_num: u8) -> Self {
+    pub fn new(afn: Afn, fn_num: u8) -> Self {
         FrameKey(afn, fn_num)
     }
 
-    pub fn afn(&self) -> u8 {
+    pub fn afn(&self) -> Afn {
         self.0
     }
 
@@ -21,7 +21,7 @@ impl FrameKey {
     }
 
     pub fn to_tuple(&self) -> (Afn, u8) {
-        (self.0.try_into().unwrap(), self.1)
+        (self.0, self.1)
     }
 }
 
@@ -66,7 +66,7 @@ impl MqttReqInfo {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug)]
 pub struct ReqInfo {
     mqtt_req_info: Option<MqttReqInfo>,
     frame_key: FrameKey,
@@ -77,7 +77,7 @@ impl ReqInfo {
     pub fn new(frame: &Frame, mqtt_req_info: Option<MqttReqInfo>) -> Self {
         ReqInfo {
             mqtt_req_info,
-            frame_key: FrameKey::new(frame.afn().into(), frame.fn_num()),
+            frame_key: FrameKey::new(frame.afn(), frame.fn_num()),
             seq_num: frame.get_seq(),
         }
     }
@@ -94,7 +94,7 @@ impl ReqInfo {
                 token.to_string(),
                 extra_data,
             )),
-            frame_key: FrameKey::new(frame.afn().into(), frame.fn_num()),
+            frame_key: FrameKey::new(frame.afn(), frame.fn_num()),
             seq_num: frame.get_seq(),
         }
     }

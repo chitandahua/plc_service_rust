@@ -1,9 +1,13 @@
+use num_enum::TryFromPrimitive;
+
 use crate::protocol::app_data::{Address, Afn};
 use crate::protocol::AppData;
 
 use crate::service;
 
 // AFN 11H
+#[derive(Debug, TryFromPrimitive)]
+#[repr(u8)]
 pub enum RouteSet {
     AddNode = 1,
     DelNode = 2,

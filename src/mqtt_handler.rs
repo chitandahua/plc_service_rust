@@ -86,6 +86,7 @@ impl PriorityQueue {
 #[derive(Debug, PartialEq)]
 pub enum MqttTopicType {
     GetModuleInfo,
+    GetMasterIdInfo,
     // 主地址
     GetMasterAddress,
     SetMasterAddress,
@@ -191,6 +192,10 @@ impl MqttMsgHandler {
                 let result = match sub_topic.mqtt_topic_type {
                     MqttTopicType::GetModuleInfo => {
                         ModuleInfo::mqtt_get_module_info(message, &uart_msg_sender);
+                        Ok(())
+                    }
+                    MqttTopicType::GetMasterIdInfo => {
+                        ModuleInfo::mqtt_get_master_id_info(message, &uart_msg_sender);
                         Ok(())
                     }
                     MqttTopicType::GetMasterAddress => services

@@ -39,15 +39,16 @@ impl UartMsgHandler {
         let (afn, fn_num) = message.req_info.frame_key().to_tuple();
         match afn {
             Afn::QueryData => {
-                let fn_num = QueryData::try_from(fn_num)
+                let query_fn_num = QueryData::try_from(fn_num)
                     .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
-                match fn_num {
+                match query_fn_num {
                     QueryData::GetModuleInfo => {
                         match ModuleInfo::slave_module_info_report(message, &self.uart_msg_sender) {
                             Ok(address) => self.plc_init.update_address(address),
                             Err(e) => self.plc_init.notify(Err(e)),
                         }
                     }
+                    _ => anyhow::bail!(UartHandlerError::UnsupportedAfnFn(afn, fn_num)),
                 }
             }
             _ => anyhow::bail!(UartHandlerError::UnsupportedAfn(afn)),
@@ -66,6 +67,7 @@ impl UartMsgHandler {
                     Ok(address) => self.plc_init.update_address(address),
                     Err(e) => self.plc_init.notify(Err(e)),
                 },
+                _ => unreachable!(),
             }
         } else {
             let result = match afn {
@@ -109,6 +111,9 @@ impl UartMsgHandler {
         match fn_num {
             QueryData::GetModuleInfo => {
                 ModuleInfo::module_info_response(message, &self.mqtt_msg_sender)
+            }
+            QueryData::GetMasterIdInfo => {
+                ModuleInfo::master_id_info_response(message, &self.mqtt_msg_sender)
             }
         }
     }

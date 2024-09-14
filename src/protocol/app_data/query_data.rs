@@ -3,7 +3,7 @@ use chrono::NaiveDate;
 use num_enum::TryFromPrimitive;
 use std::fmt;
 
-use crate::protocol::app_data::{Address, Afn, AppDataError};
+use crate::protocol::app_data::{Address, Afn, AppDataError, ModuleIdFormat};
 use crate::protocol::user_data::hex_to_dec;
 use crate::protocol::AppData;
 use crate::Result;
@@ -13,6 +13,7 @@ use crate::Result;
 #[repr(u8)]
 pub enum QueryData {
     GetModuleInfo = 10,
+    GetMasterIdInfo = 12,
 }
 
 pub struct ModuleInfoRequest;
@@ -168,6 +169,44 @@ impl fmt::Display for ModuleInfoResponse {
             )?;
         }
         Ok(())
+    }
+}
+
+pub struct MasterIdInfoRequest;
+
+impl From<MasterIdInfoRequest> for AppData {
+    fn from(_: MasterIdInfoRequest) -> Self {
+        AppData::new(Afn::QueryData, QueryData::GetMasterIdInfo as u8, None)
+    }
+}
+
+pub struct MasterIdInfoResponse {
+    pub factory_code: String,
+    pub module_id_length: u8,
+    pub module_id_format: ModuleIdFormat,
+    pub module_id: Vec<u8>,
+}
+
+impl TryFrom<AppData> for MasterIdInfoResponse {
+    type Error = crate::Error;
+    fn try_from(app_data: AppData) -> Result<Self> {
+        ensure!(
+            app_data.data_length() >= 3,
+            AppDataError::DataLength(app_data.data_length())
+        );
+        app_data.check(
+            Afn::QueryData,
+            QueryData::GetMasterIdInfo as u8,
+            4 + app_data.data_units.as_ref().unwrap()[2] as usize,
+        )?;
+        let data_unit = app_data.data_units.unwrap();
+
+        Ok(Self {
+            factory_code: String::from_utf8(vec![data_unit[1], data_unit[0]]).unwrap(),
+            module_id_length: data_unit[2],
+            module_id_format: data_unit[3].try_into()?,
+            module_id: data_unit[4..].to_vec(),
+        })
     }
 }
 

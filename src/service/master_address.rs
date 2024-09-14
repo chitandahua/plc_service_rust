@@ -4,10 +4,10 @@ use std::sync::{mpsc, Mutex};
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::{MqttMessage, PayloadBody};
 use crate::protocol::app_data::{AddressSetRequest, ConfirmResponse};
-use crate::protocol::Frame;
 use crate::request_info::MqttReqInfo;
+use crate::service::parse_response::mqtt_info_request_uart_handler;
 use crate::service::{IntoMqttMessage, UartResponse};
-use crate::{protocol::app_data::Address, MqttMsgHandler, ReqInfo, Result, UartMessage, APP_NAME};
+use crate::{protocol::app_data::Address, MqttMsgHandler, Result, UartMessage, APP_NAME};
 
 pub struct MasterAddress {
     node_addr: NodeAddress,
@@ -72,11 +72,11 @@ impl MasterAddress {
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) {
         let request = AddressSetRequest::new(address);
-        let frame = Frame::new_request(None, request);
-        let req_info = ReqInfo::new(&frame, mqtt_req_info);
-        uart_msg_sender
-            .send(UartMessage::new(req_info, frame))
-            .unwrap();
+        mqtt_info_request_uart_handler::<AddressSetRequest>(
+            request,
+            mqtt_req_info,
+            uart_msg_sender,
+        );
     }
 
     pub fn mqtt_set_address(

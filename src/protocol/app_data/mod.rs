@@ -18,7 +18,9 @@ mod meter_reading;
 pub use meter_reading::{ConcurrentReadMeterRequest, ConcurrentReadMeterResponse, MeterReading};
 
 mod query_data;
-pub use query_data::{ModuleInfoRequest, ModuleInfoResponse, QueryData};
+pub use query_data::{
+    MasterIdInfoRequest, MasterIdInfoResponse, ModuleInfoRequest, ModuleInfoResponse, QueryData,
+};
 
 //mod route_data_forward;
 //pub use route_data_forward::{DataForward, MonitorNodeRequest, MonitorNodeResponse};
@@ -90,6 +92,30 @@ impl IntoIterator for Address {
     }
 }
 
+#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[repr(u8)]
+pub enum ModuleIdFormat {
+    Combine,
+    Bcd,
+    Bin,
+    Ascii,
+}
+
+pub fn module_id_format_string(format: ModuleIdFormat, data: &[u8]) -> String {
+    match format {
+        ModuleIdFormat::Combine => todo!(),
+        ModuleIdFormat::Bcd => hex::encode(data),
+        //TODO
+        //ModuleIdFormat::Bin => data.iter().map(|byte| format!("{:02x}", byte)).collect(),
+        ModuleIdFormat::Bin => hex::encode(data),
+        ModuleIdFormat::Ascii => data
+            .iter()
+            .map(|&byte| byte as char)
+            .filter(|&c| c.is_ascii())
+            .collect(),
+    }
+}
+
 const AFN_SIZE: usize = 1;
 const DATA_FLAG_SIZE: usize = 2;
 
@@ -127,15 +153,20 @@ impl DataFlag {
     }
 
     fn as_fn_num(&self) -> u8 {
-        self.type_ * 8 + self.mark
+        let mut index = 0;
+        while (self.mark >> index) & 0x01 == 0x00 {
+            index += 1;
+        }
+
+        self.type_ * 8 + index + 1
     }
 }
 
 impl From<u8> for DataFlag {
     fn from(fn_num: u8) -> Self {
         Self {
-            type_: fn_num / 8,
-            mark: fn_num % 8,
+            type_: (fn_num - 1) / 8,
+            mark: 1 << ((fn_num - 1) % 8),
         }
     }
 }

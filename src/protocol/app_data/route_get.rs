@@ -5,12 +5,15 @@ use crate::protocol::app_data::{Address, Afn, AppDataError};
 use crate::protocol::AppData;
 use crate::Result;
 
+use super::ADDR_LEN;
+
 // AFN 10H
 #[derive(Debug, TryFromPrimitive)]
 #[repr(u8)]
 pub enum RouteQuery {
     NodeNumber = 1,
     NodeInfo = 2,
+    ChipInfo = 112,
 }
 
 #[derive(Debug)]
@@ -124,16 +127,105 @@ impl TryFrom<AppData> for QueryNodeInfoResponse {
         let data_units = app_data.data_units.unwrap();
 
         let total_node_number = u16::from_le_bytes(data_units[0..2].try_into()?);
-        let mut node_infos = Vec::new();
-        for i in 0..node_number {
-            node_infos.push(NodeDetail::from(
-                &data_units[(i * NODE_INFO_SIZE + NODE_NUMBER_SIZE)..],
-            ));
-        }
+        let node_infos = data_units[NODE_NUMBER_SIZE..]
+            .chunks(NODE_INFO_SIZE)
+            .take(node_number)
+            .map(NodeDetail::from)
+            .collect();
         Ok(Self {
             total_node_number,
             node_number: node_number as u8,
             node_infos,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ChipInfoRequest {
+    pub start_seq: u16,
+    pub node_number: u8,
+}
+
+impl ChipInfoRequest {
+    pub fn new(start_seq: u16, node_number: u8) -> Self {
+        Self {
+            start_seq,
+            node_number,
+        }
+    }
+}
+
+impl From<ChipInfoRequest> for AppData {
+    fn from(req: ChipInfoRequest) -> Self {
+        let mut data = Vec::new();
+        data.extend(req.start_seq.to_le_bytes());
+        data.push(req.node_number);
+        AppData::new(Afn::RouteGet, RouteQuery::ChipInfo as u8, Some(data))
+    }
+}
+
+const CHIP_INFO_DATA_LEN: usize = 33;
+#[derive(Debug, PartialEq)]
+pub struct ChipInformation {
+    pub address: Address,
+    pub device_type: u8,
+    pub id_info: [u8; 24],
+    pub software_version: String,
+}
+
+impl From<&[u8]> for ChipInformation {
+    fn from(data: &[u8]) -> Self {
+        Self {
+            address: data[0..ADDR_LEN].try_into().unwrap(),
+            device_type: data[6],
+            id_info: data[7..31].try_into().unwrap(),
+            software_version: hex::encode([data[32], data[31]]),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ChipInfoResponse {
+    pub total_node_number: u16,
+    pub start_seq: u16,
+    pub node_number: u8,
+    pub chip_infos: Vec<ChipInformation>,
+}
+
+const CHIP_INFO_SIZE: usize = 5;
+impl TryFrom<AppData> for ChipInfoResponse {
+    type Error = crate::Error;
+
+    fn try_from(app_data: AppData) -> Result<Self> {
+        ensure!(
+            app_data.data_length() >= CHIP_INFO_SIZE,
+            AppDataError::DataLength(app_data.data_length())
+        );
+
+        let node_number = app_data.data_units.as_ref().unwrap()[4] as usize;
+        app_data.check(
+            Afn::RouteGet,
+            RouteQuery::ChipInfo as u8,
+            node_number * CHIP_INFO_DATA_LEN + CHIP_INFO_SIZE,
+        )?;
+
+        let data_units = app_data.data_units.unwrap();
+
+        let total_node_number = u16::from_le_bytes(data_units[0..2].try_into()?);
+        let start_seq = u16::from_le_bytes(data_units[2..4].try_into()?);
+
+        let chip_infos = data_units[CHIP_INFO_SIZE..]
+            .chunks(CHIP_INFO_DATA_LEN)
+            .fold(Vec::new(), |mut acc, x| {
+                acc.push(ChipInformation::from(x));
+                acc
+            });
+
+        Ok(Self {
+            total_node_number,
+            start_seq,
+            node_number: node_number as u8,
+            chip_infos,
         })
     }
 }

@@ -1,5 +1,5 @@
 use crate::mqtt_message::Status;
-use crate::service::{MasterAddress, ModuleInfo, ModuleService};
+use crate::service::{ChipInfo, MasterAddress, ModuleInfo, ModuleService};
 use crate::{schema_check, MqttHandler, MqttResponseError, PlcDevice, Result};
 use crate::{MqttMessage, UartMessage};
 
@@ -98,6 +98,8 @@ pub enum MqttTopicType {
     ClearAcqFiles,
     // 并发抄表
     ConcurrentMeter,
+    // HPLC信息
+    GetChipInfo,
 }
 
 struct MqttTopicFilter {
@@ -235,6 +237,10 @@ impl MqttMsgHandler {
                             &mqtt_msg_sender,
                             &concurrent_msg_sender,
                         )
+                    }
+                    MqttTopicType::GetChipInfo => {
+                        ChipInfo::mqtt_get_chip_info(message, &uart_msg_sender);
+                        Ok(())
                     }
                 };
 

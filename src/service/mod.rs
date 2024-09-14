@@ -3,6 +3,8 @@ pub use concurrent_meter::ConcurrentMeter;
 
 //mod device_info;
 //pub use device_info::DeviceInfo;
+mod hplc_info;
+pub use hplc_info::ChipInfo;
 
 mod module_info;
 pub use module_info::ModuleInfo;
@@ -54,6 +56,7 @@ impl ModuleService {
         self.master_address.init(mqtt_msg_handler);
         self.node_manage.init(mqtt_msg_handler);
         self.concurrent_meter.init(mqtt_msg_handler);
+        ChipInfo::init(mqtt_msg_handler);
     }
 }
 

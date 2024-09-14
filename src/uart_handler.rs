@@ -6,7 +6,7 @@ use crate::protocol::app_data::{
     Afn, CtrlCmd, InitOperation, MeterReading, QueryData, RouteQuery, RouteSet,
 };
 use crate::request_info::{MqttReqInfo, ReqInfo};
-use crate::service::{ModuleService, PlcInit};
+use crate::service::{ChipInfo, ModuleService, PlcInit};
 use crate::{ModuleInfo, MqttMessage, MqttPayload};
 use crate::{MqttResponseError, Result, UartHandler, UartMessage};
 
@@ -155,6 +155,7 @@ impl UartMsgHandler {
                 .services
                 .node_manage
                 .uart_get_acq_files(message, &self.mqtt_msg_sender)?,
+            RouteQuery::ChipInfo => ChipInfo::chip_info_response(message, &self.mqtt_msg_sender)?,
         }
         Ok(())
     }

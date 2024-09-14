@@ -1,5 +1,5 @@
 use crate::mqtt_message::Status;
-use crate::service::{ChipInfo, MasterAddress, ModuleInfo, ModuleService};
+use crate::service::{ChipInfo, DebugMethod, MasterAddress, ModuleInfo, ModuleService};
 use crate::{schema_check, MqttHandler, MqttResponseError, PlcDevice, Result};
 use crate::{MqttMessage, UartMessage};
 
@@ -100,6 +100,8 @@ pub enum MqttTopicType {
     ConcurrentMeter,
     // HPLC信息
     GetChipInfo,
+    // debug
+    SendDebugFrame,
 }
 
 struct MqttTopicFilter {
@@ -241,6 +243,9 @@ impl MqttMsgHandler {
                     MqttTopicType::GetChipInfo => {
                         ChipInfo::mqtt_get_chip_info(message, &uart_msg_sender);
                         Ok(())
+                    }
+                    MqttTopicType::SendDebugFrame => {
+                        DebugMethod::mqtt_debug_frame_request(message, &uart_msg_sender)
                     }
                 };
 

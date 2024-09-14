@@ -6,7 +6,7 @@ use crate::protocol::app_data::{
     Afn, CtrlCmd, InitOperation, MeterReading, QueryData, RouteQuery, RouteSet,
 };
 use crate::request_info::{MqttReqInfo, ReqInfo};
-use crate::service::{ChipInfo, ModuleService, PlcInit};
+use crate::service::{ChipInfo, DebugMethod, ModuleService, PlcInit};
 use crate::{ModuleInfo, MqttMessage, MqttPayload};
 use crate::{MqttResponseError, Result, UartHandler, UartMessage};
 
@@ -178,6 +178,15 @@ impl UartMsgHandler {
         Ok(())
     }
 
+    fn uart_test_handler(&mut self, message: UartMessage) -> Result<()> {
+        let (_afn, fn_num) = message.req_info.frame_key().to_tuple();
+        match fn_num {
+            0 => DebugMethod::uart_debug_frame_response(message, &self.mqtt_msg_sender)?,
+            _ => unreachable!(),
+        }
+        Ok(())
+    }
+
     fn uart_mqtt_handler(&mut self, message: UartMessage) -> Result<()> {
         let afn = message.req_info.frame_key().afn();
         match afn {
@@ -186,6 +195,7 @@ impl UartMsgHandler {
             Afn::RouteSet => self.uart_route_set_handler(message)?,
             Afn::RouteGet => self.uart_route_query_handler(message)?,
             Afn::CocurrentReadMeter => self.uart_read_meter_handler(message)?,
+            Afn::Test => self.uart_test_handler(message)?,
             _ => anyhow::bail!(UartHandlerError::UnsupportedAfn(afn)),
         }
 
@@ -196,7 +206,7 @@ impl UartMsgHandler {
 impl UartHandler for UartMsgHandler {
     fn uart_msg_handler(&mut self, message: UartMessage) -> Result<()> {
         debug!(
-            "uart msg response handler: AFN: {:02x}, Fn: {}",
+            "uart msg response handler: AFN: {:#02x}, Fn: {}",
             message.req_info.frame_key().afn() as u8,
             message.req_info.frame_key().fn_num()
         );

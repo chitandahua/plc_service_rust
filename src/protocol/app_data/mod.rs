@@ -139,6 +139,7 @@ pub enum Afn {
     FileTransfer = 0x15,
     Debug = 0xf0,
     CocurrentReadMeter = 0xf1,
+    Test = 0xff,
 }
 
 #[derive(Debug, Clone, PartialEq)]

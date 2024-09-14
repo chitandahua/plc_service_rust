@@ -82,6 +82,18 @@ impl ReqInfo {
         }
     }
 
+    pub fn new_with_key(
+        frame: &Frame,
+        frame_key: FrameKey,
+        mqtt_req_info: Option<MqttReqInfo>,
+    ) -> Self {
+        ReqInfo {
+            mqtt_req_info,
+            frame_key,
+            seq_num: frame.get_seq(),
+        }
+    }
+
     pub fn new_with_mqtt(
         frame: &Frame,
         topic: impl AsRef<str>,

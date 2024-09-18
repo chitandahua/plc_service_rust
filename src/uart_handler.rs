@@ -150,14 +150,14 @@ impl UartMsgHandler {
             RouteQuery::NodeNumber => self
                 .services
                 .node_manage
-                .uart_get_acq_files_number(message, &self.mqtt_msg_sender)?,
+                .uart_get_acq_files_number(message, &self.mqtt_msg_sender),
             RouteQuery::NodeInfo => self
                 .services
                 .node_manage
-                .uart_get_acq_files(message, &self.mqtt_msg_sender)?,
-            RouteQuery::ChipInfo => ChipInfo::chip_info_response(message, &self.mqtt_msg_sender)?,
+                .uart_get_acq_files(message, &self.mqtt_msg_sender),
+            RouteQuery::ChipInfo => ChipInfo::chip_info_response(message, &self.mqtt_msg_sender),
+            RouteQuery::IdInfo => ChipInfo::uart_id_info_response(message, &self.mqtt_msg_sender),
         }
-        Ok(())
     }
 
     fn uart_read_meter_handler(&mut self, message: UartMessage) -> Result<()> {
@@ -181,25 +181,22 @@ impl UartMsgHandler {
     fn uart_test_handler(&mut self, message: UartMessage) -> Result<()> {
         let (_afn, fn_num) = message.req_info.frame_key().to_tuple();
         match fn_num {
-            0 => DebugMethod::uart_debug_frame_response(message, &self.mqtt_msg_sender)?,
+            0 => DebugMethod::uart_debug_frame_response(message, &self.mqtt_msg_sender),
             _ => unreachable!(),
         }
-        Ok(())
     }
 
     fn uart_mqtt_handler(&mut self, message: UartMessage) -> Result<()> {
         let afn = message.req_info.frame_key().afn();
         match afn {
-            Afn::CtrlCmd => self.uart_ctrl_cmd_handler(message)?,
-            Afn::QueryData => self.uart_query_data_handler(message)?,
-            Afn::RouteSet => self.uart_route_set_handler(message)?,
-            Afn::RouteGet => self.uart_route_query_handler(message)?,
-            Afn::CocurrentReadMeter => self.uart_read_meter_handler(message)?,
-            Afn::Test => self.uart_test_handler(message)?,
+            Afn::CtrlCmd => self.uart_ctrl_cmd_handler(message),
+            Afn::QueryData => self.uart_query_data_handler(message),
+            Afn::RouteSet => self.uart_route_set_handler(message),
+            Afn::RouteGet => self.uart_route_query_handler(message),
+            Afn::CocurrentReadMeter => self.uart_read_meter_handler(message),
+            Afn::Test => self.uart_test_handler(message),
             _ => anyhow::bail!(UartHandlerError::UnsupportedAfn(afn)),
         }
-
-        Ok(())
     }
 }
 

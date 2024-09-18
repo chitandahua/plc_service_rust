@@ -27,8 +27,9 @@ pub use query_data::{
 
 mod route_get;
 pub use route_get::{
-    ChipInfoRequest, ChipInfoResponse, NodeDetail, QueryNodeInfoRequest, QueryNodeInfoResponse,
-    QueryNodeNumberRequest, QueryNodeNumberResponse, RouteQuery,
+    ChipInfoRequest, ChipInfoResponse, IdInfoRequest, IdInfoResponse, NodeDetail,
+    QueryNodeInfoRequest, QueryNodeInfoResponse, QueryNodeNumberRequest, QueryNodeNumberResponse,
+    RouteQuery,
 };
 
 mod route_set;

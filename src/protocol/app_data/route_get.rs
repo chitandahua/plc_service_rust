@@ -13,6 +13,7 @@ use super::ADDR_LEN;
 pub enum RouteQuery {
     NodeNumber = 1,
     NodeInfo = 2,
+    IdInfo = 40,
     ChipInfo = 112,
 }
 
@@ -226,6 +227,66 @@ impl TryFrom<AppData> for ChipInfoResponse {
             start_seq,
             node_number: node_number as u8,
             chip_infos,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct IdInfoRequest {
+    pub device_type: u8,
+    pub address: Address,
+    pub id_type: u8,
+}
+
+impl From<IdInfoRequest> for AppData {
+    fn from(req: IdInfoRequest) -> Self {
+        let mut data = Vec::new();
+        data.push(req.device_type);
+        data.extend(req.address);
+        data.push(req.id_type);
+        AppData::new(Afn::RouteGet, RouteQuery::IdInfo as u8, Some(data))
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct IdInfoResponse {
+    pub device_type: u8,
+    pub address: Address,
+    pub id_type: u8,
+    pub id_length: u8,
+    pub id_info: Vec<u8>,
+}
+
+const ID_INFO_SIZE: usize = 9;
+impl TryFrom<AppData> for IdInfoResponse {
+    type Error = crate::Error;
+
+    fn try_from(app_data: AppData) -> Result<Self> {
+        ensure!(
+            app_data.data_length() >= ID_INFO_SIZE,
+            AppDataError::DataLength(app_data.data_length())
+        );
+
+        let id_length = app_data.data_units.as_ref().unwrap()[8] as usize;
+        app_data.check(
+            Afn::RouteGet,
+            RouteQuery::IdInfo as u8,
+            id_length + ID_INFO_SIZE,
+        )?;
+
+        let data_units = app_data.data_units.unwrap();
+
+        let device_type = data_units[0];
+        let address = data_units[1..7].try_into()?;
+        let id_type = data_units[7];
+        let id_info = data_units[9..9 + id_length].to_vec();
+
+        Ok(Self {
+            device_type,
+            address,
+            id_type,
+            id_length: id_length as u8,
+            id_info,
         })
     }
 }

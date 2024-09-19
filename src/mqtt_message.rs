@@ -208,12 +208,13 @@ mod mqtt_message_tests {
 
     #[test]
     fn test_mqtt_payload() {
-        let payload = MqttPayload::new(json!({}));
-        assert_eq!(payload.body(), json!({}));
+        let payload = MqttPayload::new_with_body(Some(PayloadBody::Nested { body: json!({}) }));
+        let value = serde_json::to_value(payload).unwrap();
+        assert_eq!(value["body"], json!({}));
 
-        let payload = MqttPayload::new_with_token("123", Value::Null);
-        assert_eq!(payload.token(), "123");
-        assert_eq!(payload.body(), Value::Null);
+        let payload = MqttPayload::new_with_body(Some(PayloadBody::Flat(json!({"a": 1}))));
+        let value = serde_json::to_value(payload).unwrap();
+        assert_eq!(value["a"], 1);
     }
 
     #[test]

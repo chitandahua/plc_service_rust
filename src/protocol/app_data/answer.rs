@@ -144,7 +144,6 @@ impl Display for DenyResponse {
 mod tests {
     use super::*;
     use crate::protocol::app_data::*;
-    use crate::protocol::Frame;
 
     #[test]
     fn test_confirm_response_into() {

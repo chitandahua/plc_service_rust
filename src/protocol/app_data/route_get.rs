@@ -480,8 +480,6 @@ impl TryFrom<AppData> for SlaveModuleIdResponse {
 mod tests {
     use super::*;
     use crate::protocol::app_data::*;
-    use crate::Result;
-    use tests_common::create_frame_from_hex;
 
     #[test]
     fn test_query_node_number_request() {

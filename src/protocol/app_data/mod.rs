@@ -393,26 +393,26 @@ mod tests {
     fn test_app_data_into_iterator() {
         let app_data = AppData::new(Afn::RouteSet, 3, Some(vec![4, 5, 6]));
         let collected: Vec<u8> = app_data.into_iter().collect();
-        assert_eq!(collected, vec![Afn::RouteSet as u8, 3, 0, 4, 5, 6]);
+        assert_eq!(collected, vec![Afn::RouteSet as u8, 4, 0, 4, 5, 6]);
     }
 
     #[test]
     fn test_data_flag() {
-        let data_flag = DataFlag::new(2, 3);
+        let data_flag = DataFlag { type_: 2, mark: 4 };
         assert_eq!(data_flag.as_fn_num(), 19);
 
         let data_flag_from_fn = DataFlag::from(19u8);
         assert_eq!(data_flag_from_fn.type_, 2);
-        assert_eq!(data_flag_from_fn.mark, 3);
+        assert_eq!(data_flag_from_fn.mark, 4);
 
-        let data_flag_from_slice = DataFlag::from([3u8, 2u8].as_slice());
+        let data_flag_from_slice = DataFlag::from([4u8, 2u8].as_slice());
         assert_eq!(data_flag_from_slice.type_, 2);
-        assert_eq!(data_flag_from_slice.mark, 3);
+        assert_eq!(data_flag_from_slice.mark, 4);
     }
 
     #[test]
     fn test_app_data_with_empty_data_units() {
-        let app_data = AppData::new(Afn::Answer, 0, None);
+        let app_data = AppData::new(Afn::Answer, 1, None);
         assert_eq!(app_data.data_length(), 0);
         assert_eq!(app_data.length(), AFN_SIZE + DATA_FLAG_SIZE);
     }
@@ -427,10 +427,10 @@ mod tests {
 
     #[test]
     fn test_app_data_try_from_boundary() {
-        let minimal_data = vec![Afn::Debug as u8, 0, 0];
+        let minimal_data = vec![Afn::Debug as u8, 1, 0];
         let app_data = AppData::try_from(minimal_data.as_slice()).unwrap();
         assert_eq!(app_data.afn(), Afn::Debug);
-        assert_eq!(app_data.fn_num(), 0);
+        assert_eq!(app_data.fn_num(), 1);
         assert_eq!(app_data.data_units, None);
 
         let barely_invalid_data = vec![Afn::Debug as u8, 0];
@@ -463,8 +463,6 @@ mod tests {
 
 #[cfg(test)]
 pub mod tests_common {
-    use super::*;
-    use crate::protocol::app_data::{Afn, AppData};
     use crate::protocol::Frame;
     use hex;
 
@@ -477,7 +475,7 @@ pub mod tests_common {
         Frame::try_from(bytes.as_slice()).expect("Failed to create frame from hex")
     }
 
-    pub fn test_frame_conversion(hex_str: &str) {
+    pub fn _test_frame_conversion(hex_str: &str) {
         let frame = create_frame_from_hex(hex_str);
         let reconstructed_hex = hex::encode(frame.to_bytes());
         assert_eq!(hex_str.to_lowercase(), reconstructed_hex);

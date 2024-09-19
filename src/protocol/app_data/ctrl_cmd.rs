@@ -32,11 +32,9 @@ impl From<AddressSetRequest> for AppData {
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Add;
 
     use super::*;
     use crate::protocol::app_data::*;
-    use crate::protocol::Frame;
 
     #[test]
     fn test_address_set_request() {

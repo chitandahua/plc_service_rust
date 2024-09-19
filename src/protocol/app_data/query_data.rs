@@ -214,7 +214,6 @@ impl TryFrom<AppData> for MasterIdInfoResponse {
 mod tests {
     use super::*;
     use crate::protocol::app_data::*;
-    use crate::protocol::Frame;
 
     #[test]
     fn test_module_info_request() {
@@ -245,17 +244,17 @@ mod tests {
         assert_eq!(module_info_response.current_node_num, 0x001c);
         assert_eq!(
             module_info_response.protocol_release_date,
-            NaiveDate::from_ymd_opt(2007, 8, 18)
+            NaiveDate::from_ymd_opt(2007, 8, 18).unwrap()
         );
         assert_eq!(
             module_info_response.last_record_date,
-            NaiveDate::from_ymd_opt(2033, 7, 30)
+            NaiveDate::from_ymd_opt(2033, 7, 30).unwrap()
         );
         assert_eq!(module_info_response.factory_code, "xh");
         assert_eq!(module_info_response.chip_code, "bz");
         assert_eq!(
             module_info_response.version_date,
-            NaiveDate::from_ymd_opt(2024, 12, 1)
+            NaiveDate::from_ymd_opt(2024, 12, 1).unwrap()
         );
 
         assert_eq!(module_info_response.version, 0x2300);
@@ -264,13 +263,13 @@ mod tests {
 
     #[test]
     fn test_date_transfer() {
-        let date = NaiveDate::from_ymd_opt(2007, 8, 18);
+        let date = NaiveDate::from_ymd_opt(2007, 8, 18).unwrap();
         assert_eq!(ModuleInfoResponse::date_transfer(0x07, 0x08, 0x18), date);
     }
 
     #[test]
     fn test_date_to_string() {
-        let date = NaiveDate::from_ymd_opt(2007, 8, 18);
+        let date = NaiveDate::from_ymd_opt(2007, 8, 18).unwrap();
         assert_eq!(ModuleInfoResponse::date_to_string(&date), "20070818");
     }
 }

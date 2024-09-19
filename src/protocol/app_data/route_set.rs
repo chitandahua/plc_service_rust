@@ -84,7 +84,6 @@ impl From<DelNodeRequest> for AppData {
 mod tests {
     use super::*;
     use crate::protocol::app_data::*;
-    use crate::protocol::Frame;
 
     #[test]
     fn test_add_node_request() {

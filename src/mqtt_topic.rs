@@ -309,7 +309,7 @@ mod topic_tests {
                 .unwrap_err()
                 .downcast::<TopicError>()
                 .unwrap(),
-            TopicError::InfoTarget("device".to_string())
+            TopicError::InfoTarget("device|app".to_string())
         );
 
         assert_eq!(

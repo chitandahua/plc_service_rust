@@ -97,11 +97,9 @@ impl Display for ConcurrentReadMeterResponse {
 
 #[cfg(test)]
 mod tests {
-    use tests_common::create_frame_from_hex;
 
     use super::*;
     use crate::protocol::app_data::*;
-    use crate::protocol::Frame;
 
     #[test]
     fn test_meter_read_request() {

@@ -33,7 +33,6 @@ impl From<InitRequest> for AppData {
 mod tests {
     use super::*;
     use crate::protocol::app_data::*;
-    use crate::protocol::Frame;
 
     #[test]
     fn test_init_request() {

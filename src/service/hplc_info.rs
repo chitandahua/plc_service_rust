@@ -9,7 +9,7 @@ use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_mq
 use crate::service::IntoMqttMessage;
 use crate::{MqttMessage, MqttMsgHandler, Result, APP_NAME};
 
-pub struct ChipInfo;
+pub struct HplcInfo;
 
 #[derive(Debug, Deserialize)]
 struct HplcInfoRequest {
@@ -19,7 +19,7 @@ struct HplcInfoRequest {
     node_number: u8,
 }
 
-impl ChipInfo {
+impl HplcInfo {
     pub fn mqtt_get_chip_info(message: MqttMessage, uart_msg_sender: &mpsc::Sender<UartMessage>) {
         let req = serde_json::from_str::<HplcInfoRequest>(message.payload()).unwrap();
         mqtt_request_uart_handler::<ChipInfoRequest>(
@@ -153,7 +153,7 @@ impl IntoMqttMessage for IdInfoResponse {
     }
 }
 
-impl ChipInfo {
+impl HplcInfo {
     pub fn mqtt_get_id_info(message: MqttMessage, uart_msg_sender: &mpsc::Sender<UartMessage>) {
         let req = serde_json::from_str::<MqttIdInfoRequest>(message.payload()).unwrap();
         mqtt_request_uart_handler::<IdInfoRequest>(

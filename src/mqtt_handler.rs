@@ -1,5 +1,5 @@
 use crate::mqtt_message::Status;
-use crate::service::{ChipInfo, DebugMethod, MasterAddress, ModuleInfo, ModuleService};
+use crate::service::{DebugMethod, HplcInfo, MasterAddress, ModuleInfo, ModuleService};
 use crate::{schema_check, MqttHandler, MqttResponseError, PlcDevice, Result};
 use crate::{MqttMessage, UartMessage};
 
@@ -242,11 +242,11 @@ impl MqttMsgHandler {
                         )
                     }
                     MqttTopicType::GetChipInfo => {
-                        ChipInfo::mqtt_get_chip_info(message, &uart_msg_sender);
+                        HplcInfo::mqtt_get_chip_info(message, &uart_msg_sender);
                         Ok(())
                     }
                     MqttTopicType::GetIdInfo => {
-                        ChipInfo::mqtt_get_id_info(message, &uart_msg_sender);
+                        HplcInfo::mqtt_get_id_info(message, &uart_msg_sender);
                         Ok(())
                     }
                     MqttTopicType::SendDebugFrame => {

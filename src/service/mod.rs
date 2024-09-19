@@ -7,7 +7,7 @@ pub use debug_method::DebugMethod;
 //mod device_info;
 //pub use device_info::DeviceInfo;
 mod hplc_info;
-pub use hplc_info::ChipInfo;
+pub use hplc_info::HplcInfo;
 
 mod module_info;
 pub use module_info::ModuleInfo;
@@ -59,7 +59,7 @@ impl ModuleService {
         self.master_address.init(mqtt_msg_handler);
         self.node_manage.init(mqtt_msg_handler);
         self.concurrent_meter.init(mqtt_msg_handler);
-        ChipInfo::init(mqtt_msg_handler);
+        HplcInfo::init(mqtt_msg_handler);
         DebugMethod::init(mqtt_msg_handler);
     }
 }

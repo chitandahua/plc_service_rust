@@ -160,6 +160,9 @@ impl UartMsgHandler {
             }
             RouteQuery::ChipInfo => HplcInfo::chip_info_response(message, &self.mqtt_msg_sender),
             RouteQuery::IdInfo => HplcInfo::uart_id_info_response(message, &self.mqtt_msg_sender),
+            RouteQuery::SlaveModuleId => {
+                HplcInfo::uart_slave_module_id_info_response(message, &self.mqtt_msg_sender)
+            }
         }
     }
 

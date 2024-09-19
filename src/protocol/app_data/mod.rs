@@ -30,6 +30,7 @@ pub use route_get::{
     ChipInfoRequest, ChipInfoResponse, IdInfoRequest, IdInfoResponse, NodeDetail,
     QueryNodeInfoRequest, QueryNodeInfoResponse, QueryNodeLineInfoRequest,
     QueryNodeLineInfoResponse, QueryNodeNumberRequest, QueryNodeNumberResponse, RouteQuery,
+    SlaveModuleIdRequest, SlaveModuleIdResponse,
 };
 
 mod route_set;
@@ -93,7 +94,7 @@ impl IntoIterator for Address {
     }
 }
 
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Clone, Copy, TryFromPrimitive, PartialEq)]
 #[repr(u8)]
 pub enum ModuleIdFormat {
     Combine,

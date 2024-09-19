@@ -102,6 +102,7 @@ pub enum MqttTopicType {
     GetChipInfo,
     GetNodeLineInfo,
     GetIdInfo,
+    GetSlaveModuleId,
     // debug
     SendDebugFrame,
 }
@@ -252,6 +253,10 @@ impl MqttMsgHandler {
                     }
                     MqttTopicType::GetIdInfo => {
                         HplcInfo::mqtt_get_id_info(message, &uart_msg_sender);
+                        Ok(())
+                    }
+                    MqttTopicType::GetSlaveModuleId => {
+                        HplcInfo::mqtt_get_slave_module_id_info(message, &uart_msg_sender);
                         Ok(())
                     }
                     MqttTopicType::SendDebugFrame => {

@@ -4,8 +4,9 @@ use std::sync::mpsc;
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::PayloadBody;
 use crate::protocol::app_data::{
-    ChipInfoRequest, ChipInfoResponse, IdInfoRequest, IdInfoResponse, QueryNodeLineInfoRequest,
-    QueryNodeLineInfoResponse,
+    module_id_format_string, ChipInfoRequest, ChipInfoResponse, IdInfoRequest, IdInfoResponse,
+    QueryNodeLineInfoRequest, QueryNodeLineInfoResponse, SlaveModuleIdRequest,
+    SlaveModuleIdResponse,
 };
 use crate::request_info::{MqttReqInfo, UartMessage};
 use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_mqtt_handler};
@@ -54,6 +55,11 @@ impl HplcInfo {
         let schema =
             schema_check::parse_schema(SCHEMA_PATH.join("get_node_line_info_schema.json")).ok();
         mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetNodeLineInfo, schema);
+
+        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/slaveModeID");
+        let schema =
+            schema_check::parse_schema(SCHEMA_PATH.join("get_slave_module_id_schema.json")).ok();
+        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetSlaveModuleId, schema);
     }
 }
 
@@ -240,5 +246,83 @@ impl HplcInfo {
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
         uart_response_mqtt_handler::<IdInfoResponse>(message, sender)
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MqttSlaveModuleIdInfo {
+    #[serde(rename = "nodeAddr")]
+    node_addr: String,
+    #[serde(rename = "devType")]
+    dev_type: u8,
+    #[serde(rename = "upgFlag")]
+    upg_flag: u8,
+    #[serde(rename = "vendorCode")]
+    vendor_code: String,
+    #[serde(rename = "modeIDLen")]
+    mode_id_len: u8,
+    #[serde(rename = "modeIDFormat")]
+    mode_id_format: u8,
+    #[serde(rename = "modeIDInfo")]
+    mode_id_info: String,
+}
+
+#[derive(Debug, Serialize)]
+struct MqttSlaveModuleIdInfoResponse(Vec<MqttSlaveModuleIdInfo>);
+
+impl From<SlaveModuleIdResponse> for MqttSlaveModuleIdInfoResponse {
+    fn from(slave_module_id_info_response: SlaveModuleIdResponse) -> Self {
+        Self(
+            slave_module_id_info_response
+                .slave_module_id_infos
+                .into_iter()
+                .map(|slave_module_id_info| MqttSlaveModuleIdInfo {
+                    node_addr: slave_module_id_info.address.to_string(),
+                    dev_type: slave_module_id_info.device_type & 0x0f,
+                    upg_flag: (slave_module_id_info.device_type & 0x80) >> 7,
+                    vendor_code: slave_module_id_info.factory_code,
+                    mode_id_len: slave_module_id_info.id_info.len() as u8,
+                    mode_id_format: slave_module_id_info.id_format as u8,
+                    mode_id_info: module_id_format_string(
+                        slave_module_id_info.id_format,
+                        &slave_module_id_info.id_info,
+                    ),
+                })
+                .collect(),
+        )
+    }
+}
+
+impl IntoMqttMessage for SlaveModuleIdResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttMessage::new_with_req_info_body(
+            mqtt_req_info,
+            Some(PayloadBody::Nested {
+                body: serde_json::to_value(MqttSlaveModuleIdInfoResponse::from(self)).unwrap(),
+            }),
+        )
+    }
+}
+
+type MqttSlaveModuleIdRequest = HplcInfoRequest;
+
+impl HplcInfo {
+    pub fn mqtt_get_slave_module_id_info(
+        message: MqttMessage,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) {
+        let req = serde_json::from_str::<MqttSlaveModuleIdRequest>(message.payload()).unwrap();
+        mqtt_request_uart_handler::<SlaveModuleIdRequest>(
+            SlaveModuleIdRequest::new(req.start_index, req.node_number),
+            message,
+            uart_msg_sender,
+        );
+    }
+
+    pub fn uart_slave_module_id_info_response(
+        message: UartMessage,
+        sender: &mpsc::Sender<MqttMessage>,
+    ) -> Result<()> {
+        uart_response_mqtt_handler::<SlaveModuleIdResponse>(message, sender)
     }
 }

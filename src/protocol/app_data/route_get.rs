@@ -1,7 +1,7 @@
 use anyhow::ensure;
 use num_enum::TryFromPrimitive;
 
-use crate::protocol::app_data::{Address, Afn, AppDataError};
+use crate::protocol::app_data::{Address, Afn, AppDataError, ModuleIdFormat};
 use crate::protocol::AppData;
 use crate::Result;
 
@@ -13,6 +13,7 @@ use super::ADDR_LEN;
 pub enum RouteQuery {
     NodeNumber = 1,
     NodeInfo = 2,
+    SlaveModuleId = 7,
     NodeLineInfo = 31,
     IdInfo = 40,
     ChipInfo = 112,
@@ -371,6 +372,106 @@ impl TryFrom<AppData> for QueryNodeLineInfoResponse {
             start_index,
             node_number: node_number as u8,
             line_infos,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct SlaveModuleIdRequest {
+    pub start_seq: u16,
+    pub node_number: u8,
+}
+
+impl SlaveModuleIdRequest {
+    pub fn new(start_seq: u16, node_number: u8) -> Self {
+        Self {
+            start_seq,
+            node_number,
+        }
+    }
+}
+
+impl From<SlaveModuleIdRequest> for AppData {
+    fn from(req: SlaveModuleIdRequest) -> Self {
+        let mut data = Vec::new();
+        data.extend(req.start_seq.to_le_bytes());
+        data.push(req.node_number);
+        AppData::new(Afn::RouteGet, RouteQuery::SlaveModuleId as u8, Some(data))
+    }
+}
+
+const SLAVE_MODULE_ID_PREFIX_SIZE: usize = 11;
+#[derive(Debug, PartialEq)]
+pub struct SlaveModuleIdInfo {
+    pub address: Address,
+    pub device_type: u8,
+    pub factory_code: String,
+    pub id_format: ModuleIdFormat,
+    pub id_info: Vec<u8>,
+}
+
+impl TryFrom<&[u8]> for SlaveModuleIdInfo {
+    type Error = crate::Error;
+    fn try_from(data: &[u8]) -> Result<Self> {
+        Ok(Self {
+            address: data[0..ADDR_LEN].try_into().unwrap(),
+            device_type: data[6],
+            factory_code: String::from_utf8(vec![data[8], data[7]]).unwrap(),
+            id_format: data[10].try_into()?,
+            id_info: data[11..].to_vec(),
+        })
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct SlaveModuleIdResponse {
+    pub total_node_number: u16,
+    pub node_number: u8,
+    pub slave_module_id_infos: Vec<SlaveModuleIdInfo>,
+}
+
+const SLAVE_MODULE_ID_SIZE: usize = 3;
+impl TryFrom<AppData> for SlaveModuleIdResponse {
+    type Error = crate::Error;
+
+    fn try_from(app_data: AppData) -> Result<Self> {
+        ensure!(
+            app_data.data_length() >= SLAVE_MODULE_ID_SIZE,
+            AppDataError::DataLength(app_data.data_length())
+        );
+
+        let data_units = app_data.data_units.as_ref().unwrap();
+        let node_number = data_units[2] as usize;
+        let mut module_id_index = SLAVE_MODULE_ID_SIZE;
+        let mut slave_module_id_infos = Vec::new();
+        for _ in 0..node_number {
+            ensure!(
+                app_data.data_length() >= module_id_index + SLAVE_MODULE_ID_PREFIX_SIZE,
+                AppDataError::DataLength(app_data.data_length())
+            );
+            let id_length = data_units[module_id_index + 9] as usize;
+            let id_length = id_length + SLAVE_MODULE_ID_PREFIX_SIZE;
+            ensure!(
+                app_data.data_length() >= module_id_index + id_length,
+                AppDataError::DataLength(app_data.data_length())
+            );
+            slave_module_id_infos.push(SlaveModuleIdInfo::try_from(
+                &data_units[module_id_index..module_id_index + id_length],
+            )?);
+            module_id_index += id_length;
+        }
+        app_data.check(
+            Afn::RouteGet,
+            RouteQuery::SlaveModuleId as u8,
+            module_id_index,
+        )?;
+
+        let total_node_number = u16::from_le_bytes(data_units[0..2].try_into()?);
+
+        Ok(Self {
+            total_node_number,
+            node_number: node_number as u8,
+            slave_module_id_infos,
         })
     }
 }

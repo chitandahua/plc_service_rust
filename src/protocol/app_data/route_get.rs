@@ -13,6 +13,7 @@ use super::ADDR_LEN;
 pub enum RouteQuery {
     NodeNumber = 1,
     NodeInfo = 2,
+    NodeLineInfo = 31,
     IdInfo = 40,
     ChipInfo = 112,
 }
@@ -287,6 +288,89 @@ impl TryFrom<AppData> for IdInfoResponse {
             id_type,
             id_length: id_length as u8,
             id_info,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct QueryNodeLineInfoRequest {
+    start_seq: u16,
+    node_number: u8,
+}
+
+impl QueryNodeLineInfoRequest {
+    pub fn new(start_seq: u16, node_number: u8) -> Self {
+        Self {
+            start_seq,
+            node_number,
+        }
+    }
+}
+
+impl From<QueryNodeLineInfoRequest> for AppData {
+    fn from(req: QueryNodeLineInfoRequest) -> Self {
+        let mut data = Vec::new();
+        data.extend(req.start_seq.to_le_bytes());
+        data.push(req.node_number);
+        AppData::new(Afn::RouteGet, RouteQuery::NodeLineInfo as u8, Some(data))
+    }
+}
+
+const NODE_LINE_INFO_SIZE: usize = 8;
+#[derive(Debug, PartialEq)]
+pub struct NodeLineInfo {
+    pub addr: Address,
+    pub info: u16,
+}
+
+impl From<&[u8]> for NodeLineInfo {
+    fn from(data: &[u8]) -> Self {
+        Self {
+            addr: data[0..6].try_into().unwrap(),
+            info: u16::from_le_bytes(data[6..8].try_into().unwrap()),
+        }
+    }
+}
+
+const NODE_LINE_PREFIX_SIZE: usize = 5;
+#[derive(Debug, PartialEq)]
+pub struct QueryNodeLineInfoResponse {
+    pub total_node_number: u16,
+    pub start_index: u16,
+    pub node_number: u8,
+    pub line_infos: Vec<NodeLineInfo>,
+}
+
+impl TryFrom<AppData> for QueryNodeLineInfoResponse {
+    type Error = crate::Error;
+
+    fn try_from(app_data: AppData) -> Result<Self> {
+        ensure!(
+            app_data.data_length() >= NODE_LINE_PREFIX_SIZE,
+            AppDataError::DataLength(app_data.data_length())
+        );
+
+        let node_number = app_data.data_units.as_ref().unwrap()[4] as usize;
+        app_data.check(
+            Afn::RouteGet,
+            RouteQuery::NodeLineInfo as u8,
+            node_number * NODE_LINE_INFO_SIZE + NODE_LINE_PREFIX_SIZE,
+        )?;
+
+        let data_units = app_data.data_units.unwrap();
+
+        let total_node_number = u16::from_le_bytes(data_units[0..2].try_into()?);
+        let start_index = u16::from_le_bytes(data_units[2..4].try_into()?);
+        let line_infos = data_units[NODE_LINE_PREFIX_SIZE..]
+            .chunks(NODE_LINE_INFO_SIZE)
+            .take(node_number)
+            .map(NodeLineInfo::from)
+            .collect();
+        Ok(Self {
+            total_node_number,
+            start_index,
+            node_number: node_number as u8,
+            line_infos,
         })
     }
 }

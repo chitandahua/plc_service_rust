@@ -100,6 +100,7 @@ pub enum MqttTopicType {
     ConcurrentMeter,
     // HPLC信息
     GetChipInfo,
+    GetNodeLineInfo,
     GetIdInfo,
     // debug
     SendDebugFrame,
@@ -243,6 +244,10 @@ impl MqttMsgHandler {
                     }
                     MqttTopicType::GetChipInfo => {
                         HplcInfo::mqtt_get_chip_info(message, &uart_msg_sender);
+                        Ok(())
+                    }
+                    MqttTopicType::GetNodeLineInfo => {
+                        HplcInfo::mqtt_get_node_line_info(message, &uart_msg_sender);
                         Ok(())
                     }
                     MqttTopicType::GetIdInfo => {

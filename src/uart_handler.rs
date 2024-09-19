@@ -155,6 +155,9 @@ impl UartMsgHandler {
                 .services
                 .node_manage
                 .uart_get_acq_files(message, &self.mqtt_msg_sender),
+            RouteQuery::NodeLineInfo => {
+                HplcInfo::uart_node_line_info_response(message, &self.mqtt_msg_sender)
+            }
             RouteQuery::ChipInfo => HplcInfo::chip_info_response(message, &self.mqtt_msg_sender),
             RouteQuery::IdInfo => HplcInfo::uart_id_info_response(message, &self.mqtt_msg_sender),
         }

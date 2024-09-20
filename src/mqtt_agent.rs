@@ -1,5 +1,5 @@
 use anyhow::Context;
-use paho_mqtt::{Client, ConnectOptionsBuilder, CreateOptionsBuilder, Message};
+use paho_mqtt::{client, Client, ConnectOptionsBuilder, CreateOptionsBuilder, Message};
 use std::sync::mpsc;
 use std::thread::{self, sleep, JoinHandle};
 use std::time::Duration;
@@ -74,9 +74,11 @@ impl MqttClient {
             .subscribe_many_same_qos(&handler.subscribe_topics(), qos)
             .context("subscribe topic fail")?;
 
-        let client_clone = client.clone();
-        let msg_send_thread = thread::spawn(move || {
-            Self::publish(&client_clone, receiver, qos); // 接收publish message
+        let msg_send_thread = thread::spawn({
+            let client = client.clone();
+            move || {
+                Self::publish(&client, receiver, qos); // 接收publish message
+            }
         });
         let msg_recv_thread = thread::spawn(move || {
             Self::receive(&client, rx, qos, handler);

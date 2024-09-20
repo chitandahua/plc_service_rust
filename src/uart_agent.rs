@@ -77,98 +77,105 @@ impl UartAgent {
             config,
         } = self;
 
-        let cur_req_info_clone = cur_req_info.clone();
-        let concurrent_req_info = cur_req_info.clone();
-        let cond_clone = cond.clone();
-        let uart_timeout_handler_clone = uart_timeout_handler.clone();
+        let uart_agent_thread = thread::spawn({
+            let cond = cond.clone();
+            let cur_req_info = cur_req_info.clone();
+            let uart_timeout_handler = uart_timeout_handler.clone();
+            move || {
+                const MAX_RETRY: usize = 1; // 不重试
+                while let Ok(req_msg) = uart_requeset_receiver.recv() {
+                    let UartMessage { req_info, frame } = req_msg;
+                    let is_response = frame.is_master_response();
+                    debug!(
+                        "recv {} frame {}",
+                        match is_response {
+                            true => "response",
+                            false => "request",
+                        },
+                        frame.to_hex_string()
+                    );
 
-        let uart_agent_thread = thread::spawn(move || {
-            const MAX_RETRY: usize = 1; // 不重试
-            while let Ok(req_msg) = uart_requeset_receiver.recv() {
-                let UartMessage { req_info, frame } = req_msg;
-                let is_response = frame.is_master_response();
-                debug!(
-                    "recv {} frame {}",
-                    match is_response {
-                        true => "response",
-                        false => "request",
-                    },
-                    frame.to_hex_string()
-                );
+                    let mut cnt = 0;
+                    {
+                        let bytes = Into::<Vec<u8>>::into(frame);
+                        let mut lock = cur_req_info.lock().unwrap();
+                        lock.req_info = Some(req_info);
 
-                let mut cnt = 0;
-                {
-                    let bytes = Into::<Vec<u8>>::into(frame);
-                    let mut lock = cur_req_info.lock().unwrap();
-                    lock.req_info = Some(req_info);
+                        while cnt < MAX_RETRY {
+                            match lock.writer.write_request(&bytes) {
+                                Ok(_) => {}
+                                Err(err) => {
+                                    warn!("write error {}", err);
+                                }
+                            };
 
-                    while cnt < MAX_RETRY {
-                        match lock.writer.write_request(&bytes) {
-                            Ok(_) => {}
-                            Err(err) => {
-                                warn!("write error {}", err);
+                            if is_response {
+                                break;
                             }
-                        };
+
+                            let result = cond
+                                .wait_timeout_while(lock, config.timeout, |req| {
+                                    req.req_info.is_some()
+                                })
+                                .unwrap();
+                            lock = result.0;
+                            if !result.1.timed_out() {
+                                break;
+                            }
+                            cnt += 1;
+                        }
 
                         if is_response {
-                            break;
+                            continue;
                         }
 
-                        let result = cond
-                            .wait_timeout_while(lock, config.timeout, |req| req.req_info.is_some())
-                            .unwrap();
-                        lock = result.0;
-                        if !result.1.timed_out() {
-                            break;
+                        // 超时处理
+                        let req = lock.req_info.take();
+                        if let Some(req) = req {
+                            warn!("request seq {} timeout", req.seq_num());
+                            let _ = uart_timeout_handler.handle_timeout(req);
+                            consecutive_timeouts.fetch_add(1, Ordering::Relaxed);
+                        } else {
+                            consecutive_timeouts.store(0, Ordering::Relaxed);
                         }
-                        cnt += 1;
-                    }
-
-                    if is_response {
-                        continue;
-                    }
-
-                    // 超时处理
-                    let req = lock.req_info.take();
-                    if let Some(req) = req {
-                        warn!("request seq {} timeout", req.seq_num());
-                        let _ = uart_timeout_handler.handle_timeout(req);
-                        consecutive_timeouts.fetch_add(1, Ordering::Relaxed);
-                    } else {
-                        consecutive_timeouts.store(0, Ordering::Relaxed);
                     }
                 }
-            }
 
-            info!("uart_agent_thread finish");
+                info!("uart_agent_thread finish");
+            }
         });
 
-        let uart_concurrent_thread = thread::spawn(move || loop {
-            while let Ok(req_msg) = concurrent_req_receiver.recv() {
-                let UartMessage { req_info, frame } = req_msg;
-                debug!("recv concurrent request frame {}", frame.to_hex_string());
+        let uart_concurrent_thread = thread::spawn({
+            let cur_req_info = cur_req_info.clone();
+            move || loop {
+                while let Ok(req_msg) = concurrent_req_receiver.recv() {
+                    let UartMessage { req_info, frame } = req_msg;
+                    debug!("recv concurrent request frame {}", frame.to_hex_string());
 
-                let seq = frame.get_seq();
-                let bytes = Into::<Vec<u8>>::into(frame);
-                let concurrent_req_info_clone = concurrent_req_info.clone();
-                let uart_timeout_handler = uart_timeout_handler_clone.clone();
-                let guard = timer.schedule_with_delay(config.concurrent_timeout, move || {
-                    warn!("concurrent request seq {} timeout", seq);
-                    let req_info = {
-                        let mut lock = concurrent_req_info_clone.lock().unwrap();
-                        // 若超时 且当前只有mqtt会并行请求 故unwrap
-                        lock.concurrent_req_info.remove(&seq).unwrap().0
-                    };
-                    let _ = uart_timeout_handler.handle_timeout(req_info);
-                });
-                {
-                    let mut lock = concurrent_req_info.lock().unwrap();
-                    let res = lock.writer.write_request(&bytes);
-                    match res {
-                        Ok(_) => {
-                            lock.concurrent_req_info.insert(seq, (req_info, guard));
+                    let seq = frame.get_seq();
+                    let bytes = Into::<Vec<u8>>::into(frame);
+                    let guard = timer.schedule_with_delay(config.concurrent_timeout, {
+                        let cur_req_info = cur_req_info.clone();
+                        let uart_timeout_handler = uart_timeout_handler.clone();
+                        move || {
+                            warn!("concurrent request seq {} timeout", seq);
+                            let req_info = {
+                                let mut lock = cur_req_info.lock().unwrap();
+                                // 若超时 且当前只有mqtt会并行请求 故unwrap
+                                lock.concurrent_req_info.remove(&seq).unwrap().0
+                            };
+                            let _ = uart_timeout_handler.handle_timeout(req_info);
                         }
-                        Err(error) => error!("write error {}", error),
+                    });
+                    {
+                        let mut lock = cur_req_info.lock().unwrap();
+                        let res = lock.writer.write_request(&bytes);
+                        match res {
+                            Ok(_) => {
+                                lock.concurrent_req_info.insert(seq, (req_info, guard));
+                            }
+                            Err(error) => error!("write error {}", error),
+                        }
                     }
                 }
             }
@@ -182,7 +189,7 @@ impl UartAgent {
                     let req_info = {
                         // 根据response获取cmd
                         let mut is_serial_req = false;
-                        let mut lock = cur_req_info_clone.lock().unwrap();
+                        let mut lock = cur_req_info.lock().unwrap();
                         let info = if response.is_slave_report() {
                             Some(ReqInfo::new(&response, None))
                         } else if let Some(concurrent_req) =
@@ -205,7 +212,7 @@ impl UartAgent {
                         };
 
                         if is_serial_req {
-                            cond_clone.notify_one();
+                            cond.notify_one();
                         }
                         info
                     };

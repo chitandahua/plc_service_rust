@@ -150,39 +150,42 @@ impl MqttMsgHandler {
             priority_queue,
             msg_receiver,
         } = self;
-        let priority_queue_clone = priority_queue.clone();
-        let mqtt_msg_sender_clone = mqtt_msg_sender.clone();
+
         let topic_filters = Arc::new(topic_filters);
-        let topic_filters_clone = topic_filters.clone();
 
-        let msg_handle = thread::spawn(move || loop {
-            let message = msg_receiver.recv().unwrap();
+        let msg_handle = thread::spawn({
+            let priority_queue = priority_queue.clone();
+            let mqtt_msg_sender = mqtt_msg_sender.clone();
+            let topic_filters = topic_filters.clone();
+            move || loop {
+                let message = msg_receiver.recv().unwrap();
 
-            // schema check
-            let schema = topic_filters_clone
-                .iter()
-                .find(|&topic_filter| topic_filter.filter.matches(message.topic()))
-                .and_then(|topic_filter| topic_filter.schema.as_ref());
+                // schema check
+                let schema = topic_filters
+                    .iter()
+                    .find(|&topic_filter| topic_filter.filter.matches(message.topic()))
+                    .and_then(|topic_filter| topic_filter.schema.as_ref());
 
-            if let Some(schema) = schema {
-                match schema_check::schema_check(schema, message.payload()) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        error!("schema check failed: {}", e);
-                        mqtt_msg_sender_clone
-                            .send(MqttMessage::new_with_msg_status_reason(
-                                message,
-                                Status::Failure,
-                                MqttResponseError::InvalidJson(e.to_string()),
-                            ))
-                            .unwrap();
-                        continue;
+                if let Some(schema) = schema {
+                    match schema_check::schema_check(schema, message.payload()) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            error!("schema check failed: {}", e);
+                            mqtt_msg_sender
+                                .send(MqttMessage::new_with_msg_status_reason(
+                                    message,
+                                    Status::Failure,
+                                    MqttResponseError::InvalidJson(e.to_string()),
+                                ))
+                                .unwrap();
+                            continue;
+                        }
                     }
                 }
-            }
 
-            let priority_message = PriorityMessage::new(message);
-            priority_queue_clone.push(priority_message);
+                let priority_message = PriorityMessage::new(message);
+                priority_queue.push(priority_message);
+            }
         });
 
         let handle = thread::spawn(move || loop {

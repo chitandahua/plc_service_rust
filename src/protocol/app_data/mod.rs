@@ -201,11 +201,7 @@ impl AppData {
     }
 
     pub fn length(&self) -> usize {
-        let mut length = AFN_SIZE + DATA_FLAG_SIZE;
-        if let Some(data_units) = &self.data_units {
-            length += data_units.len();
-        }
-        length
+        AFN_SIZE + DATA_FLAG_SIZE + self.data_length()
     }
 
     pub fn get_comm_mark(&self) -> u8 {

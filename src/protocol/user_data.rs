@@ -4,8 +4,7 @@ use std::fmt::{self, Display};
 use anyhow::ensure;
 
 use crate::protocol::info_field::{self, InfoFieldType};
-use crate::protocol::{Address, ADDR_LEN};
-use crate::protocol::{AppData, InfoField};
+use crate::protocol::{Address, AppData, InfoField, ADDR_LEN};
 use crate::Result;
 
 // address field
@@ -109,8 +108,7 @@ impl UserData {
                 seq,
                 address_field
                     .as_ref()
-                    .map(|a| a.relay_address.is_some() as u8)
-                    .unwrap_or(0),
+                    .map_or(0, |a| a.relay_address.is_some() as u8),
                 app_data.get_comm_mark(),
             ),
             address_field,
@@ -132,8 +130,7 @@ impl UserData {
         let info_field =
             InfoField::from_bytes(info_field_type, &bytes[0..info_field::INFO_FIELD_SIZE])?;
         let mut address_field = None;
-        let app_data;
-        if info_field.comm_model_mark() == 1 {
+        let app_data = if info_field.comm_model_mark() == 1 {
             // 中继地址数量为relay_level
             let relay_level = info_field.relay_level();
             let len = (relay_level as usize + 2) * ADDR_LEN;
@@ -144,10 +141,10 @@ impl UserData {
             address_field = Some(
                 bytes[info_field::INFO_FIELD_SIZE..info_field::INFO_FIELD_SIZE + len].try_into()?,
             );
-            app_data = AppData::try_from(&bytes[info_field::INFO_FIELD_SIZE + len..])?;
+            AppData::try_from(&bytes[info_field::INFO_FIELD_SIZE + len..])?
         } else {
-            app_data = AppData::try_from(&bytes[info_field::INFO_FIELD_SIZE..])?;
-        }
+            AppData::try_from(&bytes[info_field::INFO_FIELD_SIZE..])?
+        };
 
         Ok(Self {
             info_field,

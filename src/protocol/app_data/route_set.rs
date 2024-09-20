@@ -3,8 +3,6 @@ use num_enum::TryFromPrimitive;
 use crate::protocol::app_data::{Address, Afn};
 use crate::protocol::AppData;
 
-use crate::service;
-
 // AFN 11H
 #[derive(Debug, TryFromPrimitive)]
 #[repr(u8)]
@@ -25,13 +23,6 @@ impl NodeInfo {
             src_addr,
             protocol_type,
         }
-    }
-
-    pub fn to_node_info(&self) -> service::NodeInfo {
-        service::NodeInfo::new(
-            self.src_addr.to_string(),
-            format!("{:02x}", self.protocol_type),
-        )
     }
 }
 

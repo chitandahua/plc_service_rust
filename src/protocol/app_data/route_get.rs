@@ -278,17 +278,12 @@ impl TryFrom<AppData> for IdInfoResponse {
 
         let data_units = app_data.data_units.unwrap();
 
-        let device_type = data_units[0];
-        let address = data_units[1..7].try_into()?;
-        let id_type = data_units[7];
-        let id_info = data_units[9..9 + id_length].to_vec();
-
         Ok(Self {
-            device_type,
-            address,
-            id_type,
+            device_type: data_units[0],
+            address: data_units[1..7].try_into()?,
+            id_type: data_units[7],
             id_length: id_length as u8,
-            id_info,
+            id_info: data_units[9..9 + id_length].to_vec(),
         })
     }
 }
@@ -443,7 +438,7 @@ impl TryFrom<AppData> for SlaveModuleIdResponse {
         let data_units = app_data.data_units.as_ref().unwrap();
         let node_number = data_units[2] as usize;
         let mut module_id_index = SLAVE_MODULE_ID_SIZE;
-        let mut slave_module_id_infos = Vec::new();
+        let mut slave_module_id_infos = Vec::with_capacity(node_number);
         for _ in 0..node_number {
             ensure!(
                 app_data.data_length() >= module_id_index + SLAVE_MODULE_ID_PREFIX_SIZE,

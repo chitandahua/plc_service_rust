@@ -140,7 +140,7 @@ impl TryFrom<u8> for CtrlField {
     fn try_from(ctrl_field: u8) -> Result<Self> {
         Ok(CtrlField {
             dir: (ctrl_field >> 7).try_into()?,
-            prm: ((ctrl_field >> 6) & 1).try_into()?,
+            prm: ((ctrl_field >> 6) & 0x01).try_into()?,
             comm: (ctrl_field & 0x3f).try_into()?,
         })
     }

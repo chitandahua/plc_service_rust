@@ -86,7 +86,7 @@ impl TryFrom<AppData> for ModuleInfoResponse {
         )?;
         let data_unit = app_data.data_units.unwrap();
 
-        let mut response = ModuleInfoResponse {
+        let response = ModuleInfoResponse {
             comm_mode: (data_unit[0] >> 4) & 0x0F,
             speed_num,
             max_timeout_time: data_unit[6],
@@ -103,7 +103,10 @@ impl TryFrom<AppData> for ModuleInfoResponse {
             chip_code: String::from_utf8(vec![data_unit[33], data_unit[32]]).unwrap(),
             version_date: Self::date_transfer(data_unit[36], data_unit[35], data_unit[34]),
             version: u16::from_le_bytes([data_unit[37], data_unit[38]]),
-            comm_speed: Vec::new(),
+            comm_speed: data_unit[39..]
+                .chunks(2)
+                .map(|x| u16::from_le_bytes(x.try_into().unwrap()))
+                .collect(),
             // Initialize other fields here...
             metering_mode: 0,
             node_info_mode: 0,
@@ -115,12 +118,6 @@ impl TryFrom<AppData> for ModuleInfoResponse {
             low_voltage_power_off: 0,
             channel_num: 0,
         };
-
-        for i in (0..speed_num as usize * 2).step_by(2) {
-            response
-                .comm_speed
-                .push(u16::from_le_bytes([data_unit[39 + i], data_unit[40 + i]]));
-        }
 
         Ok(response)
     }

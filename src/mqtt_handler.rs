@@ -105,6 +105,8 @@ pub enum MqttTopicType {
     GetSlaveModuleId,
     // debug
     SendDebugFrame,
+    // 设备信息
+    DeviceInfo,
 }
 
 struct MqttTopicFilter {
@@ -264,6 +266,10 @@ impl MqttMsgHandler {
                     }
                     MqttTopicType::SendDebugFrame => {
                         DebugMethod::mqtt_debug_frame_request(message, &uart_msg_sender)
+                    }
+                    MqttTopicType::DeviceInfo => {
+                        services.device_info.mqtt_device_info_response(message);
+                        Ok(())
                     }
                 };
 

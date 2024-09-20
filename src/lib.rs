@@ -34,8 +34,7 @@ use uart_agent::{UartAgent, UartHandler};
 mod schema_check;
 
 mod service;
-use service::PlcDevice;
-use service::{ModuleInfo, ModuleService, PlcInit};
+use service::{DeviceInfo, ModuleInfo, ModuleService, PlcDevice, PlcInit};
 
 mod uart_handler;
 use uart_handler::{UartMsgHandler, UartTimeoutHandler};
@@ -53,6 +52,7 @@ pub struct PlcService {
     uart_agent: UartAgent,
     module_service: ModuleService,
     timer: Arc<Timer>,
+    device_info: DeviceInfo,
 }
 
 impl PlcService {
@@ -68,7 +68,9 @@ impl PlcService {
             config.meter_config.concurrent.timeout,
         )?;
         let timer = Arc::new(Timer::new());
-        let module_service = ModuleService::new(timer.clone(), &config.meter_config)?;
+        let device_info = DeviceInfo::new();
+        let module_service =
+            ModuleService::new(timer.clone(), device_info.clone(), &config.meter_config)?;
 
         Ok(Self {
             meter_config: config.meter_config,
@@ -77,6 +79,7 @@ impl PlcService {
             uart_agent,
             module_service,
             timer,
+            device_info,
         })
     }
 
@@ -139,16 +142,15 @@ impl PlcService {
         join_handler.extend(mqtt_msg_handler.run(self.module_service.clone())?);
 
         // 初始化流程
-        //let device_info = DeviceInfo::new();
-        //device_info.run(&mqtt_msg_sender)?;
+        self.device_info.run(&mqtt_msg_sender)?;
 
         self.module_service
             .master_address
-            //.update_address(device_info.esn());
-            .update_address("123456789012".to_string());
+            .update_address(self.device_info.esn());
+        //.update_address("123456789012".to_string());
 
-        //plc_init.run()?;
-        join_handler.push(plc_device.run()?);
+        plc_init.run()?;
+        //join_handler.push(plc_device.run()?);
 
         for handler in join_handler {
             handler.join().unwrap();

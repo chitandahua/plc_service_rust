@@ -104,19 +104,20 @@ impl IntoMqttMessage for ConcurrentReadMeterResponse {
 impl ConcurrentMeter {
     pub fn new(timer: &Timer, meter_config: MeterReadingConfig) -> Self {
         let concurrent_meter = Arc::new(ConcurrentMeterManager::new(meter_config));
-        let concurrent_meter_clone = concurrent_meter.clone();
 
         let queue_aging_time = concurrent_meter.meter_config.queue_aging_time as i64;
-        let _aging_queue =
-            timer.schedule_repeating(chrono::Duration::minutes(queue_aging_time), move || {
-                let mut sample_cache = concurrent_meter_clone.sample_cache.lock().unwrap();
+        let _aging_queue = timer.schedule_repeating(chrono::Duration::minutes(queue_aging_time), {
+            let concurrent_meter = concurrent_meter.clone();
+            move || {
+                let mut sample_cache = concurrent_meter.sample_cache.lock().unwrap();
                 sample_cache.retain(|_, v| {
                     v.is_waiting_response
                         || !v.msg_cache_queue.is_empty()
                         || chrono::Utc::now().signed_duration_since(v.last_operation_time)
                             < chrono::Duration::minutes(queue_aging_time)
                 });
-            });
+            }
+        });
         ConcurrentMeter {
             concurrent_meter,
             _aging_queue,

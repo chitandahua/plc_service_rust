@@ -4,8 +4,9 @@ pub use concurrent_meter::ConcurrentMeter;
 mod debug_method;
 pub use debug_method::DebugMethod;
 
-//mod device_info;
-//pub use device_info::DeviceInfo;
+mod device_info;
+pub use device_info::DeviceInfo;
+
 mod hplc_info;
 pub use hplc_info::HplcInfo;
 
@@ -16,7 +17,6 @@ mod master_address;
 pub use master_address::MasterAddress;
 
 mod node_config;
-pub use node_config::NodeInfo;
 
 mod node_manage;
 pub use node_manage::NodeManage;
@@ -43,14 +43,20 @@ pub struct ModuleService {
     pub master_address: Arc<MasterAddress>,
     pub node_manage: Arc<NodeManage>,
     pub concurrent_meter: ConcurrentMeter,
+    pub device_info: DeviceInfo,
 }
 
 impl ModuleService {
-    pub fn new(timer: Arc<Timer>, meter_config: &MeterConfig) -> Result<Self> {
+    pub fn new(
+        timer: Arc<Timer>,
+        device_info: DeviceInfo,
+        meter_config: &MeterConfig,
+    ) -> Result<Self> {
         Ok(Self {
             master_address: Arc::new(MasterAddress::new()),
             node_manage: Arc::new(NodeManage::new(None, meter_config.uart_timeout as u64)?),
             concurrent_meter: ConcurrentMeter::new(&timer, meter_config.meter_reading.clone()),
+            device_info,
         })
     }
 
@@ -61,6 +67,7 @@ impl ModuleService {
         self.concurrent_meter.init(mqtt_msg_handler);
         HplcInfo::init(mqtt_msg_handler);
         DebugMethod::init(mqtt_msg_handler);
+        self.device_info.init(mqtt_msg_handler);
     }
 }
 

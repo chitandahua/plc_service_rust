@@ -1,5 +1,5 @@
 use anyhow::Context;
-use paho_mqtt::{client, Client, ConnectOptionsBuilder, CreateOptionsBuilder, Message};
+use paho_mqtt::{Client, ConnectOptionsBuilder, CreateOptionsBuilder, Message};
 use std::sync::mpsc;
 use std::thread::{self, sleep, JoinHandle};
 use std::time::Duration;

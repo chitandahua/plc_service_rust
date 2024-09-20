@@ -272,4 +272,32 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2007, 8, 18).unwrap();
         assert_eq!(ModuleInfoResponse::date_to_string(&date), "20070818");
     }
+
+    #[test]
+    fn test_master_id_info_request() {
+        let frame = tests_common::create_frame_from_hex("680f00430000000000000308014f16");
+
+        let master_id_info_request = MasterIdInfoRequest {};
+        assert_eq!(frame.into_app_data(), master_id_info_request.into());
+    }
+
+    #[test]
+    fn test_master_id_info_response() {
+        let frame = tests_common::create_frame_from_hex(
+            "681e0083000010000005030801484c0b0100000000000000000000004416",
+        );
+
+        let master_id_info_response =
+            MasterIdInfoResponse::try_from(frame.into_app_data()).unwrap();
+        assert_eq!(master_id_info_response.factory_code, "LH");
+        assert_eq!(master_id_info_response.module_id_length, 0x0b);
+        assert_eq!(
+            master_id_info_response.module_id_format,
+            ModuleIdFormat::Bcd
+        );
+        assert_eq!(
+            master_id_info_response.module_id,
+            hex::decode("0000000000000000000000").unwrap()
+        );
+    }
 }

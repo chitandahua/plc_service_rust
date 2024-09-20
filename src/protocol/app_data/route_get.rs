@@ -531,4 +531,167 @@ mod tests {
             response
         );
     }
+
+    #[test]
+    fn test_id_info_request() {
+        let frame =
+            tests_common::create_frame_from_hex("6817004300000000000010800401218967563412018616");
+        let request = IdInfoRequest {
+            device_type: 0x01,
+            address: "123456678921".into(),
+            id_type: 0x01,
+        };
+        assert_eq!(frame.into_app_data(), request.into());
+    }
+
+    #[test]
+    fn test_id_info_response() {
+        let frame = tests_common::create_frame_from_hex("68300083000010000005108004034841020100000118000000000000000000000000000000000000000000000000d416");
+        let response = IdInfoResponse {
+            device_type: 0x03,
+            address: "000001024148".into(),
+            id_type: 0x01,
+            id_length: 0x18,
+            id_info: hex::decode("000000000000000000000000000000000000000000000000").unwrap(),
+        };
+
+        assert_eq!(
+            TryInto::<IdInfoResponse>::try_into(frame.into_app_data()).unwrap(),
+            response
+        );
+    }
+
+    #[test]
+    fn test_chip_info_request() {
+        let frame = tests_common::create_frame_from_hex("6812004300000000000010800d0100ffe016");
+        let request = ChipInfoRequest {
+            start_seq: 0x0001,
+            node_number: 0xff,
+        };
+        assert_eq!(frame.into_app_data(), request.into());
+    }
+
+    #[test]
+    fn test_chip_info_response() {
+        let frame = tests_common::create_frame_from_hex(
+            "6877008300001000000710800d030001000310445713576602000000000000000000000000000000000000000000000000082416433420200003ffffffffffffffffffffffffffffffffffffffffffffffff06090250000222220338722ac62e5b47f528bd9400003241484c03fbc1019c02010322ac16",
+        );
+        let response = ChipInfoResponse {
+            total_node_number: 0x0003,
+            start_seq: 0x0001,
+            node_number: 0x03,
+            chip_infos: vec![
+                ChipInformation {
+                    address: "665713574410".into(),
+                    device_type: 0x02,
+                    id_info: hex::decode("000000000000000000000000000000000000000000000000")
+                        .unwrap()
+                        .try_into()
+                        .unwrap(),
+                    software_version: "2408".into(),
+                },
+                ChipInformation {
+                    address: "002020344316".into(),
+                    device_type: 0x03,
+                    id_info: hex::decode("ffffffffffffffffffffffffffffffffffffffffffffffff")
+                        .unwrap()
+                        .try_into()
+                        .unwrap(),
+                    software_version: "0906".into(),
+                },
+                ChipInformation {
+                    address: "222202005002".into(),
+                    device_type: 0x03,
+                    id_info: hex::decode("38722ac62e5b47f528bd9400003241484c03fbc1019c0201")
+                        .unwrap()
+                        .try_into()
+                        .unwrap(),
+                    software_version: "2203".into(),
+                },
+            ],
+        };
+        assert_eq!(
+            TryInto::<ChipInfoResponse>::try_into(frame.into_app_data()).unwrap(),
+            response
+        );
+    }
+
+    #[test]
+    fn test_node_line_info_request() {
+        let frame = tests_common::create_frame_from_hex("681200430000000000001040030100039a16");
+        let request = QueryNodeLineInfoRequest {
+            start_seq: 0x0001,
+            node_number: 0x03,
+        };
+        assert_eq!(frame.into_app_data(), request.into());
+    }
+
+    #[test]
+    fn test_node_line_info_response() {
+        let frame = tests_common::create_frame_from_hex(
+            "682400830000100000051040030300010002484102010000010012710201004511005a16",
+        );
+        let response = QueryNodeLineInfoResponse {
+            total_node_number: 0x0003,
+            start_index: 0x0001,
+            node_number: 0x02,
+            line_infos: vec![
+                NodeLineInfo {
+                    addr: "000001024148".into(),
+                    info: 0x0001,
+                },
+                NodeLineInfo {
+                    addr: "450001027112".into(),
+                    info: 0x0011,
+                },
+            ],
+        };
+
+        assert_eq!(
+            TryInto::<QueryNodeLineInfoResponse>::try_into(frame.into_app_data()).unwrap(),
+            response
+        );
+    }
+
+    #[test]
+    fn test_slave_module_id_request() {
+        let frame = tests_common::create_frame_from_hex("681200430000000000001040000100039716");
+        let request = SlaveModuleIdRequest {
+            start_seq: 0x0001,
+            node_number: 0x03,
+        };
+        assert_eq!(frame.into_app_data(), request.into());
+    }
+
+    #[test]
+    fn test_slave_module_id_response() {
+        let frame = tests_common::create_frame_from_hex(
+            "68340083000010000005104000030002000248410201814c4d060212710201004514524841020900484906023471520102483d16"
+        );
+        let response = SlaveModuleIdResponse {
+            total_node_number: 0x0003,
+            node_number: 0x02,
+            slave_module_id_infos: vec![
+                SlaveModuleIdInfo {
+                    address: "010241480200".into(),
+                    device_type: 0x81,
+                    factory_code: "ML".into(),
+                    id_format: ModuleIdFormat::Bin,
+                    id_info: hex::decode("127102010045").unwrap(),
+                },
+                SlaveModuleIdInfo {
+                    address: "090241485214".into(),
+                    device_type: 0x00,
+                    factory_code: "IH".into(),
+                    id_format: ModuleIdFormat::Bin,
+                    id_info: hex::decode("347152010248").unwrap(),
+                },
+            ],
+        };
+
+        assert_eq!(
+            TryInto::<SlaveModuleIdResponse>::try_into(frame.into_app_data()).unwrap(),
+            response
+        );
+    }
 }

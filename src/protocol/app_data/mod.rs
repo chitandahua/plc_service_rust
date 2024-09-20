@@ -481,3 +481,47 @@ pub mod tests_common {
         assert_eq!(hex_str.to_lowercase(), reconstructed_hex);
     }
 }
+
+#[cfg(test)]
+mod test_address {
+    use super::*;
+
+    #[test]
+    fn test_address() {
+        let address = Address::new([0x12, 0x34, 0x56, 0x78, 0x90, 0x21]);
+        let address_str = "123456789021";
+
+        let addr1 = Address::from(address_str);
+        assert_eq!(addr1, address);
+
+        let addr2 = Address::try_from(hex::decode("219078563412").unwrap().as_slice()).unwrap();
+        assert_eq!(addr2, address);
+
+        assert_eq!(address.to_string(), address_str);
+        assert_eq!(
+            Into::<Vec<u8>>::into(address),
+            vec![0x21, 0x90, 0x78, 0x56, 0x34, 0x12]
+        );
+    }
+}
+
+#[cfg(test)]
+mod test_module_id {
+    use super::*;
+
+    #[test]
+    fn test_module_id() {
+        assert_eq!(
+            module_id_format_string(ModuleIdFormat::Ascii, &[65, 66, 67, 68]),
+            "ABCD"
+        );
+
+        assert_eq!(
+            module_id_format_string(
+                ModuleIdFormat::Bin,
+                hex::decode("65666768").unwrap().as_slice()
+            ),
+            "65666768"
+        );
+    }
+}

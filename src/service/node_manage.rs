@@ -17,7 +17,7 @@ use crate::protocol::Frame;
 use crate::request_info::MqttReqInfo;
 use crate::service::parse_response::uart_response_mqtt_handler;
 use crate::service::{IntoMqttMessage, UartResponse};
-use crate::{MqttMsgHandler, ReqInfo, Result, UartMessage, APP_NAME};
+use crate::{MqttMsgHandler, MqttResponseError, ReqInfo, Result, UartMessage, APP_NAME};
 
 struct NodeConfig {
     node_config: node_config::NodeConfig,
@@ -254,13 +254,13 @@ impl NodeManage {
         node_conf.operation_result = None; // 可去掉
         let result = self
             .cond
-            .wait_timeout_while(node_conf, Duration::from_secs(self.timeout), |conf| {
+            .wait_timeout_while(node_conf, Duration::from_millis(self.timeout), |conf| {
                 conf.operation_result.is_none()
             })
             .unwrap();
         node_conf = result.0;
         if result.1.timed_out() {
-            node_conf.operation_result = Some(Err(anyhow::anyhow!("timeout")));
+            node_conf.operation_result = Some(Err(anyhow::anyhow!(MqttResponseError::Timeout)));
         }
 
         node_conf.operation_result.take().unwrap()

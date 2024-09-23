@@ -25,6 +25,9 @@ pub use query_data::{
 //mod route_data_forward;
 //pub use route_data_forward::{DataForward, MonitorNodeRequest, MonitorNodeResponse};
 
+mod route_data_read;
+pub use route_data_read::{ClockDataResponse, RouteDataRead};
+
 mod route_get;
 pub use route_get::{
     ChipInfoRequest, ChipInfoResponse, IdInfoRequest, IdInfoResponse, NodeDetail,

@@ -3,10 +3,10 @@ use tracing::debug;
 
 use crate::mqtt_message::Status;
 use crate::protocol::app_data::{
-    Afn, CtrlCmd, InitOperation, MeterReading, QueryData, RouteQuery, RouteSet,
+    Afn, CtrlCmd, InitOperation, MeterReading, QueryData, RouteDataRead, RouteQuery, RouteSet,
 };
 use crate::request_info::{MqttReqInfo, ReqInfo};
-use crate::service::{DebugMethod, HplcInfo, ModuleService, PlcInit};
+use crate::service::{DebugMethod, HplcInfo, ModuleService, PlcInit, RouteDataRequest};
 use crate::{ModuleInfo, MqttMessage, MqttPayload};
 use crate::{MqttResponseError, Result, UartHandler, UartMessage};
 
@@ -35,6 +35,17 @@ impl UartMsgHandler {
         }
     }
 
+    fn uart_route_data_read_handler(&mut self, message: UartMessage) -> Result<()> {
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        let fn_num = RouteDataRead::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
+        match fn_num {
+            RouteDataRead::Clock => {
+                RouteDataRequest::uart_clock_data_response(message, &self.uart_msg_sender)
+            }
+        }
+    }
+
     fn uart_slave_report_handler(&mut self, message: UartMessage) -> Result<()> {
         let (afn, fn_num) = message.req_info.frame_key().to_tuple();
         match afn {
@@ -51,6 +62,7 @@ impl UartMsgHandler {
                     _ => anyhow::bail!(UartHandlerError::UnsupportedAfnFn(afn, fn_num)),
                 }
             }
+            Afn::RouteDataRead => self.uart_route_data_read_handler(message)?,
             _ => anyhow::bail!(UartHandlerError::UnsupportedAfn(afn)),
         }
 

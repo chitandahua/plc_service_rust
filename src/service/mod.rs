@@ -30,10 +30,12 @@ pub use plc_init::PlcInit;
 mod plc_device;
 pub use plc_device::PlcDevice;
 
+mod route_data_request;
+pub use route_data_request::RouteDataRequest;
+
 use std::sync::Arc;
 use timer::Timer;
 
-use crate::mqtt_message::Status;
 use crate::protocol::app_data::{ConfirmResponse, DenyResponse};
 use crate::request_info::MqttReqInfo;
 use crate::{MeterConfig, MqttMessage, MqttMsgHandler, MqttPayload, Result};
@@ -77,24 +79,14 @@ pub trait IntoMqttMessage {
 
 impl IntoMqttMessage for ConfirmResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        let payload = MqttPayload::new(
-            mqtt_req_info.token(),
-            Status::Success,
-            crate::mqtt_message::SUCCESS,
-            None,
-        );
+        let payload = MqttPayload::new_with_token(mqtt_req_info.token(), None);
         MqttMessage::new(mqtt_req_info.topic(), payload)
     }
 }
 
 impl IntoMqttMessage for DenyResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        let payload = MqttPayload::new(
-            mqtt_req_info.token(),
-            Status::Failure,
-            self.error_code(),
-            None,
-        );
+        let payload = MqttPayload::new_with_token_result(mqtt_req_info.token(), Err(self.into()));
         MqttMessage::new(mqtt_req_info.topic(), payload)
     }
 }

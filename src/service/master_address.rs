@@ -30,14 +30,15 @@ impl MasterAddress {
 
     pub fn update_address(&self, esn: String) {
         // esn中可能有字母需去除 取12个数字 不足则前面补0
-        let esn = esn
+        let addr = esn
             .chars()
             .filter(|c| c.is_ascii_digit())
             .take(12)
             .collect::<String>();
+        let addr = format!("{:0>12}", addr);
 
         let mut address = self.node_addr.address.lock().unwrap();
-        *address = Address::from(esn.as_str());
+        *address = Address::from(addr.as_str());
     }
 
     pub fn get_master_address(&self) -> Address {

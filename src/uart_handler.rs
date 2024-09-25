@@ -3,10 +3,13 @@ use tracing::debug;
 
 use crate::mqtt_message::Status;
 use crate::protocol::app_data::{
-    Afn, CtrlCmd, InitOperation, MeterReading, QueryData, RouteDataRead, RouteQuery, RouteSet,
+    ActiveReport, Afn, CtrlCmd, InitOperation, MeterReading, QueryData, RouteDataRead, RouteQuery,
+    RouteSet,
 };
 use crate::request_info::{MqttReqInfo, ReqInfo};
-use crate::service::{DebugMethod, HplcInfo, ModuleService, PlcInit, RouteDataRequest};
+use crate::service::{
+    DebugMethod, EventReport, HplcInfo, ModuleService, PlcInit, RouteDataRequest,
+};
 use crate::{ModuleInfo, MqttMessage, MqttPayload};
 use crate::{MqttResponseError, Result, UartHandler, UartMessage};
 
@@ -46,6 +49,19 @@ impl UartMsgHandler {
         }
     }
 
+    fn uart_active_report_handler(&mut self, message: UartMessage) -> Result<()> {
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        let fn_num = ActiveReport::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
+        match fn_num {
+            ActiveReport::SlaveNodeEvent => EventReport::uart_slave_node_event_report(
+                message,
+                &self.uart_msg_sender,
+                &self.mqtt_msg_sender,
+            ),
+        }
+    }
+
     fn uart_slave_report_handler(&mut self, message: UartMessage) -> Result<()> {
         let (afn, fn_num) = message.req_info.frame_key().to_tuple();
         match afn {
@@ -63,6 +79,7 @@ impl UartMsgHandler {
                 }
             }
             Afn::RouteDataRead => self.uart_route_data_read_handler(message)?,
+            Afn::Report => self.uart_active_report_handler(message)?,
             _ => anyhow::bail!(UartHandlerError::UnsupportedAfn(afn)),
         }
 

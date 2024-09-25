@@ -7,6 +7,9 @@ pub use debug_method::DebugMethod;
 mod device_info;
 pub use device_info::DeviceInfo;
 
+mod event_report;
+pub use event_report::EventReport;
+
 mod hplc_info;
 pub use hplc_info::HplcInfo;
 

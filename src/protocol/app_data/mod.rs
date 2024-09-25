@@ -5,6 +5,9 @@ use std::fmt::{Display, Formatter};
 
 use thiserror::Error;
 
+mod active_report;
+pub use active_report::{ActiveReport, SlaveNodeEvent};
+
 mod answer;
 pub use answer::{AnswerFn, ConfirmResponse, DenyResponse};
 

@@ -105,6 +105,11 @@ impl UartPort {
 impl StreamReader {
     pub fn read_response(&mut self) -> Result<Option<Frame>> {
         loop {
+            // 可能会有多个帧
+            if let Some(frame) = self.parse_frame()? {
+                return Ok(Some(frame));
+            }
+
             let mut buffer = [0; 1024];
             match self.stream.read(&mut buffer)? {
                 0 => {
@@ -119,10 +124,6 @@ impl StreamReader {
                     self.buffer.put(&buffer[..n]);
                     debug!("read data len {}", n)
                 }
-            }
-
-            if let Some(frame) = self.parse_frame()? {
-                return Ok(Some(frame));
             }
         }
     }

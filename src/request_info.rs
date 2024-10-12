@@ -61,7 +61,7 @@ impl MqttReqInfo {
         self.extra_data.take()
     }
 
-    pub fn set_extra_data(&mut self, extra_data: Option<Box<dyn Any + Send + Sync>>) {
+    pub fn _set_extra_data(&mut self, extra_data: Option<Box<dyn Any + Send + Sync>>) {
         self.extra_data = extra_data;
     }
 }

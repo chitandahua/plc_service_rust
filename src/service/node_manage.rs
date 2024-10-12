@@ -30,10 +30,6 @@ pub struct NodeManage {
     cond: Condvar,
 }
 
-pub struct NodeInfoData {
-    node_infos: Vec<NodeInfo>,
-}
-
 trait AcqFilesOperation {
     fn parse_node_infos(
         node_config: &node_config::NodeConfig,
@@ -250,7 +246,10 @@ impl NodeManage {
         );
     }
 
-    fn wait_operation_result(&self, mut node_conf: MutexGuard<'_, NodeConfig>) -> Result<()> {
+    fn wait_operation_result<'a>(
+        &self,
+        mut node_conf: MutexGuard<'a, NodeConfig>,
+    ) -> Result<MutexGuard<'a, NodeConfig>> {
         node_conf.operation_result = None; // 可去掉
         let result = self
             .cond
@@ -263,7 +262,9 @@ impl NodeManage {
             node_conf.operation_result = Some(Err(anyhow::anyhow!(MqttResponseError::Timeout)));
         }
 
-        node_conf.operation_result.take().unwrap()
+        node_conf.operation_result.take().unwrap()?;
+
+        Ok(node_conf)
     }
 }
 
@@ -308,17 +309,14 @@ impl NodeManage {
     fn operate_chunk_acq_files<T: AcqFilesOperation>(
         &self,
         app: &str,
-        mut mqtt_req_info: Option<MqttReqInfo>,
+        mqtt_req_info: Option<MqttReqInfo>,
         node_infos: &[NodeInfo],
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<usize> {
         let mut node_config = self.node_conf.lock().unwrap();
-        let operate_nodes = T::operate_node_infos(
-            &mut node_config.node_config,
-            app,
-            node_infos,
-            mqtt_req_info.is_none(),
-        )?;
+        let is_init = mqtt_req_info.is_none();
+        let operate_nodes =
+            T::operate_node_infos(&mut node_config.node_config, app, node_infos, is_init)?;
 
         // 无需uart操作
         let node_number = operate_nodes.len();
@@ -328,19 +326,16 @@ impl NodeManage {
         }
 
         debug!("uart operate nodes: {:?}", operate_nodes);
-        if let Some(mqtt_req_info) = mqtt_req_info.as_mut() {
-            let extra_data = NodeInfoData {
-                node_infos: operate_nodes.clone(),
-            };
-            mqtt_req_info.set_extra_data(Some(Box::new(extra_data)));
-        }
-        let frame = Frame::new_request(None, T::create_uart_request(operate_nodes));
+        let frame = Frame::new_request(None, T::create_uart_request(operate_nodes.clone()));
 
         let req_info = ReqInfo::new(&frame, mqtt_req_info);
         uart_msg_sender.send(UartMessage::new(req_info, frame))?;
 
-        self.wait_operation_result(node_config)
-            .map(|_| node_number)?;
+        node_config = self.wait_operation_result(node_config)?;
+
+        if !is_init {
+            T::update_node_config(&mut node_config.node_config, app, &operate_nodes)?;
+        }
 
         Ok(node_number)
     }
@@ -404,29 +399,9 @@ impl NodeManage {
 
     fn uart_operate_acq_files<T: AcqFilesOperation>(&self, message: UartMessage) -> Result<()> {
         let response = UartResponse::<ConfirmResponse>::try_from(message.frame)?;
-        let is_init = message.req_info.is_init();
-        let result = match response {
-            UartResponse::Normal(_) => Ok(()),
-            UartResponse::Deny(response) => Err(anyhow::anyhow!("{}", response.error_code())),
-        };
-
-        if is_init || result.is_err() {
-            let mut node_config = self.node_conf.lock().unwrap();
-            node_config.operation_result = Some(result);
-            self.cond.notify_one();
-        } else {
-            let mut mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
-            let extra_data = mqtt_req_info.get_extra_data().unwrap();
-            let node_infos = extra_data.downcast::<NodeInfoData>().unwrap();
-            let mut node_conf = self.node_conf.lock().unwrap();
-            let result = T::update_node_config(
-                &mut node_conf.node_config,
-                MqttTopic::get_app(mqtt_req_info.topic()),
-                &node_infos.node_infos,
-            );
-            node_conf.operation_result = Some(result);
-            self.cond.notify_one();
-        }
+        let mut node_conf = self.node_conf.lock().unwrap();
+        node_conf.operation_result = Some(response.into());
+        self.cond.notify_one();
 
         Ok(())
     }
@@ -446,7 +421,7 @@ impl NodeManage {
 
         let node_config = self.node_conf.lock().unwrap();
         uart_msg_sender.send(UartMessage::new(req_info, frame))?;
-        self.wait_operation_result(node_config)
+        self.wait_operation_result(node_config).map(|_| ())
     }
 
     pub fn uart_clear_acq_files(&self, message: UartMessage) -> Result<()> {

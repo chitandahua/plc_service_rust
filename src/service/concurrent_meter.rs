@@ -27,7 +27,7 @@ struct SampleCache {
 impl SampleCache {
     fn new() -> Self {
         SampleCache {
-            is_waiting_response: false,
+            is_waiting_response: true,
             msg_cache_queue: VecDeque::new(),
             last_operation_time: chrono::Utc::now(),
         }

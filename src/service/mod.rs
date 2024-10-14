@@ -59,7 +59,7 @@ impl ModuleService {
     ) -> Result<Self> {
         Ok(Self {
             master_address: Arc::new(MasterAddress::new()),
-            node_manage: Arc::new(NodeManage::new(None, meter_config.uart_timeout as u64)?),
+            node_manage: Arc::new(NodeManage::new(None)?),
             concurrent_meter: ConcurrentMeter::new(&timer, meter_config.meter_reading.clone()),
             device_info,
         })

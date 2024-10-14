@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::{mpsc, Condvar, Mutex, MutexGuard};
-use std::time::Duration;
 use tracing::{debug, error, info};
 
 use crate::mqtt_handler::MqttTopicType;
@@ -25,7 +24,6 @@ struct NodeConfig {
 }
 
 pub struct NodeManage {
-    timeout: u64,
     node_conf: Mutex<NodeConfig>,
     cond: Condvar,
 }
@@ -194,9 +192,8 @@ impl AcqFilesOperation for ClearAcqFiles {
 
 const ACQ_FILES_CHUNK_SIZE: usize = 10;
 impl NodeManage {
-    pub fn new(config_path: Option<PathBuf>, timeout: u64) -> Result<Self> {
+    pub fn new(config_path: Option<PathBuf>) -> Result<Self> {
         Ok(Self {
-            timeout,
             node_conf: Mutex::new(NodeConfig {
                 node_config: node_config::NodeConfig::new(config_path)?,
                 operation_result: None,
@@ -251,16 +248,10 @@ impl NodeManage {
         mut node_conf: MutexGuard<'a, NodeConfig>,
     ) -> Result<MutexGuard<'a, NodeConfig>> {
         node_conf.operation_result = None; // 可去掉
-        let result = self
+        node_conf = self
             .cond
-            .wait_timeout_while(node_conf, Duration::from_millis(self.timeout), |conf| {
-                conf.operation_result.is_none()
-            })
+            .wait_while(node_conf, |conf| conf.operation_result.is_none())
             .unwrap();
-        node_conf = result.0;
-        if result.1.timed_out() {
-            node_conf.operation_result = Some(Err(anyhow::anyhow!(MqttResponseError::Timeout)));
-        }
 
         node_conf.operation_result.take().unwrap()?;
 
@@ -397,7 +388,7 @@ impl NodeManage {
         self.mqtt_opration_acq_files::<ClearAcqFiles>(message, mqtt_msg_sender, uart_msg_sender)
     }
 
-    fn uart_operate_acq_files<T: AcqFilesOperation>(&self, message: UartMessage) -> Result<()> {
+    fn uart_operate_acq_files(&self, message: UartMessage) -> Result<()> {
         let response = UartResponse::<ConfirmResponse>::try_from(message.frame)?;
         let mut node_conf = self.node_conf.lock().unwrap();
         node_conf.operation_result = Some(response.into());
@@ -406,12 +397,18 @@ impl NodeManage {
         Ok(())
     }
 
+    pub fn uart_operate_acq_files_timeout(&self) {
+        let mut node_conf = self.node_conf.lock().unwrap();
+        node_conf.operation_result = Some(Err(anyhow::anyhow!(MqttResponseError::Timeout)));
+        self.cond.notify_one();
+    }
+
     pub fn uart_add_acq_files(&self, message: UartMessage) -> Result<()> {
-        self.uart_operate_acq_files::<AddAcqFiles>(message)
+        self.uart_operate_acq_files(message)
     }
 
     pub fn uart_del_acq_files(&self, message: UartMessage) -> Result<()> {
-        self.uart_operate_acq_files::<DelAcqFiles>(message)
+        self.uart_operate_acq_files(message)
     }
 
     // 仅初始化时调用
@@ -429,7 +426,7 @@ impl NodeManage {
             let mut node_config = self.node_conf.lock().unwrap();
             node_config.node_config.clear_all_app();
         }
-        self.uart_operate_acq_files::<ClearAcqFiles>(message)
+        self.uart_operate_acq_files(message)
     }
 
     pub fn load_config(&self, uart_msg_sender: &mpsc::Sender<UartMessage>) -> Result<()> {

@@ -23,7 +23,6 @@ pub struct PlcInit {
     services: ModuleService,
     init_result: Mutex<PlcInitResult>,
     cond: Condvar,
-    timeout: Duration,
     init_timeout: Duration,
     init_flag: Arc<AtomicBool>,
 }
@@ -32,7 +31,6 @@ impl PlcInit {
     pub fn new(
         uart_msg_sender: mpsc::Sender<UartMessage>,
         services: ModuleService,
-        timeout: u32,
         init_timeout: u32,
     ) -> Self {
         Self {
@@ -40,7 +38,6 @@ impl PlcInit {
             services,
             init_result: Mutex::new(PlcInitResult::default()),
             cond: Condvar::new(),
-            timeout: Duration::from_millis(timeout as u64),
             init_timeout: Duration::from_secs(init_timeout as u64),
             init_flag: Arc::new(AtomicBool::new(false)),
         }
@@ -64,7 +61,11 @@ impl PlcInit {
         self.notify_event(InitEvent::Address(address));
     }
 
-    fn wait_for_event(&self, timeout: Duration) -> Result<InitEvent> {
+    pub fn notify_timeout(&self) {
+        self.notify_event(InitEvent::Result(Err(PlcInitError::Timeout.into())));
+    }
+
+    fn wait_for_event_timeout(&self, timeout: Duration) -> Result<InitEvent> {
         let mut res = self.init_result.lock().unwrap();
         let result = self
             .cond
@@ -72,23 +73,37 @@ impl PlcInit {
             .unwrap();
         res = result.0;
         if result.1.timed_out() {
-            return Err(anyhow::anyhow!("timeout"));
+            return Err(PlcInitError::Timeout.into());
         }
 
         Ok(res.event.take().unwrap())
     }
 
-    pub fn wait_result(&self) -> Result<()> {
-        match self.wait_for_event(self.timeout)? {
+    fn wait_for_event(&self) -> Result<InitEvent> {
+        let mut res = self.init_result.lock().unwrap();
+        res = self.cond.wait_while(res, |r| r.event.is_none()).unwrap();
+
+        Ok(res.event.take().unwrap())
+    }
+
+    fn wait_result(&self) -> Result<()> {
+        match self.wait_for_event()? {
             InitEvent::Result(result) => result,
-            _ => Err(anyhow::anyhow!("Unexpected event type")),
+            _ => Err(PlcInitError::InvalidEvent.into()),
         }
     }
 
-    pub fn wait_address(&self) -> Result<Address> {
-        match self.wait_for_event(self.init_timeout)? {
+    fn wait_init_address(&self) -> Result<Address> {
+        match self.wait_for_event_timeout(self.init_timeout)? {
             InitEvent::Address(address) => Ok(address),
-            _ => Err(anyhow::anyhow!("Unexpected event type")),
+            _ => Err(PlcInitError::InvalidEvent.into()),
+        }
+    }
+
+    fn wait_address(&self) -> Result<Address> {
+        match self.wait_for_event()? {
+            InitEvent::Address(address) => Ok(address),
+            _ => Err(PlcInitError::InvalidEvent.into()),
         }
     }
 
@@ -116,7 +131,7 @@ impl PlcInit {
 
         // 等待模块信息上报
         let master_address = self.services.master_address.get_master_address();
-        let address_match = match self.wait_address() {
+        let address_match = match self.wait_init_address() {
             Ok(address) => master_address == address,
             Err(_) => self.get_master_address()? == master_address,
         };
@@ -142,4 +157,12 @@ impl PlcInit {
         self.init_flag.store(true, Ordering::Relaxed);
         Ok(())
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum PlcInitError {
+    #[error("init timeout")]
+    Timeout,
+    #[error("unexpected event type")]
+    InvalidEvent,
 }

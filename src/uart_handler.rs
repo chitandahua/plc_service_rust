@@ -260,6 +260,7 @@ pub struct UartTimeoutHandler {
     mqtt_msg_sender: mpsc::Sender<MqttMessage>,
     concurrent_msg_sender: mpsc::Sender<UartMessage>,
     services: ModuleService,
+    plc_init: Arc<PlcInit>,
 }
 
 impl UartTimeoutHandler {
@@ -267,11 +268,13 @@ impl UartTimeoutHandler {
         mqtt_msg_sender: mpsc::Sender<MqttMessage>,
         concurrent_msg_sender: mpsc::Sender<UartMessage>,
         services: ModuleService,
+        plc_init: Arc<PlcInit>,
     ) -> Self {
         Self {
             mqtt_msg_sender,
             concurrent_msg_sender,
             services,
+            plc_init,
         }
     }
 
@@ -298,12 +301,13 @@ impl UartTimeoutHandler {
                     &self.mqtt_msg_sender,
                 )?;
             }
-            (Afn::RouteSet, _) => {}
-            _ => {
-                if let Some(mqtt_req_info) = req_info.into_mqtt_req_info() {
-                    self.mqtt_timeout_cb(mqtt_req_info)
-                }
+            (Afn::RouteSet, _) => {
+                self.services.node_manage.uart_operate_acq_files_timeout();
             }
+            _ => match req_info.into_mqtt_req_info() {
+                Some(mqtt_req_info) => self.mqtt_timeout_cb(mqtt_req_info),
+                None => self.plc_init.notify_timeout(),
+            },
         }
 
         Ok(())

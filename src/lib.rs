@@ -97,18 +97,18 @@ impl PlcService {
         );
         self.module_service.init(&mut mqtt_msg_handler);
 
+        let plc_init = Arc::new(PlcInit::new(
+            uart_msg_sender.clone(),
+            self.module_service.clone(),
+            self.meter_config.init_timeout,
+        ));
+
         let uart_timeout_handler = UartTimeoutHandler::new(
             mqtt_msg_sender.clone(),
             concurrent_msg_sender.clone(),
             self.module_service.clone(),
+            plc_init.clone(),
         );
-
-        let plc_init = Arc::new(PlcInit::new(
-            uart_msg_sender.clone(),
-            self.module_service.clone(),
-            self.meter_config.uart_timeout,
-            self.meter_config.init_timeout,
-        ));
         let uart_handler = UartMsgHandler::new(
             mqtt_msg_sender.clone(),
             uart_msg_sender.clone(),

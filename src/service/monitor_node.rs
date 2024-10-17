@@ -61,6 +61,22 @@ impl From<MonitorNodeDataRequest> for app_data::MonitorNodeRequest {
     }
 }
 
+trait GetAcqAddr {
+    fn get_acq_addr(&self) -> Address;
+}
+
+impl GetAcqAddr for MonitorNodeDelayRequest {
+    fn get_acq_addr(&self) -> Address {
+        Address::from(self.acq_addr.as_str())
+    }
+}
+
+impl GetAcqAddr for MonitorNodeDataRequest {
+    fn get_acq_addr(&self) -> Address {
+        Address::from(self.acq_addr.as_str())
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub(crate) struct MonitorNodeDelayResponse {
     pub delay: u16,
@@ -130,22 +146,15 @@ impl MonitorNode {
 
     fn get_monitor_node_delay(
         &self,
+        master_address: Address,
         route_ctrl: RouteCtrl,
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<MonitorNodeDelayResponse> {
-        let request: MonitorNodeDelayRequest = serde_json::from_str(message.payload()).unwrap();
         route_ctrl.auto_pause_metering(uart_msg_sender)?;
-
         self.metering.store(true, Ordering::Relaxed);
 
-        let mqtt_req_info = MqttReqInfo::new(message.topic(), message.get_token(), None);
-
-        let frame = Frame::new_request(None, app_data::MonitorNodeRequest::from(request));
-        let req_info = ReqInfo::new(&frame, Some(mqtt_req_info));
-        uart_msg_sender
-            .send(UartMessage::new(req_info, frame))
-            .unwrap();
+        monitor_node_request::<MonitorNodeDelayRequest>(master_address, message, uart_msg_sender);
 
         // 等待delay以及回复
         self.wait_delay()
@@ -159,25 +168,10 @@ impl MonitorNode {
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<MonitorNodeDataResponse> {
-        let request: MonitorNodeDataRequest = serde_json::from_str(message.payload()).unwrap();
         route_ctrl.auto_pause_metering(uart_msg_sender)?;
-
         self.metering.store(true, Ordering::Relaxed);
 
-        let mqtt_req_info = MqttReqInfo::new(message.topic(), message.get_token(), None);
-
-        let frame = Frame::new_request(
-            Some(AddressField::new(
-                master_address,
-                None,
-                Address::from(request.acq_addr.as_str()),
-            )),
-            app_data::MonitorNodeRequest::from(request),
-        );
-        let req_info = ReqInfo::new(&frame, Some(mqtt_req_info));
-        uart_msg_sender
-            .send(UartMessage::new(req_info, frame))
-            .unwrap();
+        monitor_node_request::<MonitorNodeDataRequest>(master_address, message, uart_msg_sender);
 
         // 等待回复
         self.wait_data()
@@ -185,6 +179,7 @@ impl MonitorNode {
 
     pub fn mqtt_get_monitor_node_delay(
         &self,
+        master_address: Address,
         route_ctrl: RouteCtrl,
         _concurrent_meter: ConcurrentMeter,
         message: MqttMessage,
@@ -192,15 +187,17 @@ impl MonitorNode {
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
         let mqtt_req_info = message.to_mqtt_req_info();
-        let response = match self.get_monitor_node_delay(route_ctrl, message, uart_msg_sender) {
-            Ok(res) => MqttMessage::new_with_req_info_body(
-                mqtt_req_info,
-                Some(PayloadBody::Flat(serde_json::to_value(res).unwrap())),
-            ),
-            Err(e) => {
-                MqttMessage::new_with_req_info_status_reason(mqtt_req_info, Status::Failure, e)
-            }
-        };
+        let response =
+            match self.get_monitor_node_delay(master_address, route_ctrl, message, uart_msg_sender)
+            {
+                Ok(res) => MqttMessage::new_with_req_info_body(
+                    mqtt_req_info,
+                    Some(PayloadBody::Flat(serde_json::to_value(res).unwrap())),
+                ),
+                Err(e) => {
+                    MqttMessage::new_with_req_info_status_reason(mqtt_req_info, Status::Failure, e)
+                }
+            };
 
         self.metering.store(false, Ordering::Relaxed);
         //concurrent_meter.handle_request(); // TODO
@@ -253,4 +250,27 @@ impl MonitorNode {
 
         Ok(())
     }
+}
+
+fn monitor_node_request<T>(
+    master_address: Address,
+    message: MqttMessage,
+    uart_msg_sender: &mpsc::Sender<UartMessage>,
+) where
+    T: serde::de::DeserializeOwned + GetAcqAddr,
+    T: Into<app_data::MonitorNodeRequest>,
+{
+    let request: T = serde_json::from_str(message.payload()).unwrap();
+    let acq_addr = request.get_acq_addr();
+    let request: app_data::MonitorNodeRequest = request.into();
+    let mqtt_req_info = MqttReqInfo::new(message.topic(), message.get_token(), None);
+
+    let frame = Frame::new_request(
+        Some(AddressField::new(master_address, None, acq_addr)),
+        request,
+    );
+    let req_info = ReqInfo::new(&frame, Some(mqtt_req_info));
+    uart_msg_sender
+        .send(UartMessage::new(req_info, frame))
+        .unwrap();
 }

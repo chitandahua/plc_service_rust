@@ -46,6 +46,11 @@ impl UartMsgHandler {
             RouteDataRead::Clock => {
                 RouteDataRequest::uart_clock_data_response(message, &self.uart_msg_sender)
             }
+            RouteDataRead::CommDelay => RouteDataRequest::uart_route_delay_response(
+                message,
+                self.services.monitor_node.clone(),
+                &self.uart_msg_sender,
+            ),
         }
     }
 
@@ -273,12 +278,12 @@ impl UartHandler for UartMsgHandler {
             message.req_info.frame_key().fn_num()
         );
 
-        match message.req_info.is_init() {
-            true => match message.frame.is_slave_report() {
-                true => self.uart_slave_report_handler(message),
-                false => self.uart_init_handler(message),
+        match message.frame.is_slave_report() {
+            false => match message.req_info.is_init() {
+                false => self.uart_mqtt_handler(message),
+                true => self.uart_init_handler(message),
             },
-            false => self.uart_mqtt_handler(message),
+            true => self.uart_slave_report_handler(message),
         }?;
 
         Ok(())

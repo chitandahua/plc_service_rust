@@ -135,10 +135,27 @@ impl ReqInfo {
 pub struct UartMessage {
     pub req_info: ReqInfo,
     pub frame: Frame,
+    pub extra_req_info: Option<ReqInfo>,
 }
 
 impl UartMessage {
     pub fn new(req_info: ReqInfo, frame: Frame) -> Self {
-        UartMessage { req_info, frame }
+        UartMessage {
+            req_info,
+            frame,
+            extra_req_info: None,
+        }
+    }
+
+    pub fn new_with_extra_req_info(
+        req_info: ReqInfo,
+        frame: Frame,
+        extra_req_info: Option<ReqInfo>,
+    ) -> Self {
+        UartMessage {
+            req_info,
+            frame,
+            extra_req_info,
+        }
     }
 }

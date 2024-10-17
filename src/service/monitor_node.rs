@@ -61,19 +61,50 @@ impl From<MonitorNodeDataRequest> for app_data::MonitorNodeRequest {
     }
 }
 
-trait GetAcqAddr {
+trait MonitorNodeOperation {
     fn get_acq_addr(&self) -> Address;
+    fn monitor_node_operate(
+        monitor_node: &MonitorNode,
+        master_address: Address,
+        message: MqttMessage,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) -> Result<PayloadBody>;
 }
 
-impl GetAcqAddr for MonitorNodeDelayRequest {
+impl MonitorNodeOperation for MonitorNodeDelayRequest {
     fn get_acq_addr(&self) -> Address {
         Address::from(self.acq_addr.as_str())
     }
+
+    fn monitor_node_operate(
+        monitor_node: &MonitorNode,
+        master_address: Address,
+        message: MqttMessage,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) -> Result<PayloadBody> {
+        monitor_node_request::<Self>(master_address, message, uart_msg_sender);
+        monitor_node
+            .wait_delay()
+            .and_then(|delay| monitor_node.wait_data().map(|_| delay))
+            .map(|delay| PayloadBody::Flat(serde_json::to_value(delay).unwrap()))
+    }
 }
 
-impl GetAcqAddr for MonitorNodeDataRequest {
+impl MonitorNodeOperation for MonitorNodeDataRequest {
     fn get_acq_addr(&self) -> Address {
         Address::from(self.acq_addr.as_str())
+    }
+
+    fn monitor_node_operate(
+        monitor_node: &MonitorNode,
+        master_address: Address,
+        message: MqttMessage,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) -> Result<PayloadBody> {
+        monitor_node_request::<Self>(master_address, message, uart_msg_sender);
+        monitor_node
+            .wait_data()
+            .map(|data| PayloadBody::Flat(serde_json::to_value(data).unwrap()))
     }
 }
 
@@ -133,111 +164,114 @@ impl MonitorNode {
     fn wait_delay(&self) -> Result<MonitorNodeDelayResponse> {
         match self.wait_for_response()? {
             MonitorNodeResponse::Delay(response) => Ok(response),
-            _ => unreachable!(),
+            _ => Err(anyhow::anyhow!("Invalid monitor node response")),
         }
     }
 
     fn wait_data(&self) -> Result<MonitorNodeDataResponse> {
         match self.wait_for_response()? {
             MonitorNodeResponse::Data(response) => Ok(response),
-            _ => unreachable!(),
+            _ => Err(anyhow::anyhow!("Invalid monitor node response")),
         }
     }
 
-    fn get_monitor_node_delay(
-        &self,
-        master_address: Address,
-        route_ctrl: RouteCtrl,
-        message: MqttMessage,
-        uart_msg_sender: &mpsc::Sender<UartMessage>,
-    ) -> Result<MonitorNodeDelayResponse> {
-        route_ctrl.auto_pause_metering(uart_msg_sender)?;
+    fn with_metering<F, T>(&self, f: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
         self.metering.store(true, Ordering::Relaxed);
-
-        monitor_node_request::<MonitorNodeDelayRequest>(master_address, message, uart_msg_sender);
-
-        // 等待delay以及回复
-        self.wait_delay()
-            .and_then(|delay| self.wait_data().map(|_| delay))
+        let result = f();
+        self.metering.store(false, Ordering::Relaxed);
+        result
     }
 
-    fn get_monitor_node_data(
+    fn get_monitor_node_info<R: MonitorNodeOperation>(
         &self,
         master_address: Address,
         route_ctrl: RouteCtrl,
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
-    ) -> Result<MonitorNodeDataResponse> {
+    ) -> Result<PayloadBody> {
         route_ctrl.auto_pause_metering(uart_msg_sender)?;
-        self.metering.store(true, Ordering::Relaxed);
 
-        monitor_node_request::<MonitorNodeDataRequest>(master_address, message, uart_msg_sender);
+        self.with_metering(|| {
+            R::monitor_node_operate(self, master_address, message, uart_msg_sender)
+        })
+    }
 
-        // 等待回复
-        self.wait_data()
+    fn mqtt_get_monitor_node_info<R: MonitorNodeOperation>(
+        &self,
+        master_address: Address,
+        route_ctrl: RouteCtrl,
+        _concurrent_meter: ConcurrentMeter,
+        message: MqttMessage,
+        mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) -> Result<()> {
+        let mqtt_req_info = message.to_mqtt_req_info();
+        let response = match self.get_monitor_node_info::<R>(
+            master_address,
+            route_ctrl,
+            message,
+            uart_msg_sender,
+        ) {
+            Ok(res) => MqttMessage::new_with_req_info_body(mqtt_req_info, Some(res)),
+            Err(e) => {
+                MqttMessage::new_with_req_info_status_reason(mqtt_req_info, Status::Failure, e)
+            }
+        };
+
+        //concurrent_meter.handle_request(); // TODO
+
+        mqtt_msg_sender.send(response).unwrap();
+
+        Ok(())
     }
 
     pub fn mqtt_get_monitor_node_delay(
         &self,
         master_address: Address,
         route_ctrl: RouteCtrl,
-        _concurrent_meter: ConcurrentMeter,
+        concurrent_meter: ConcurrentMeter,
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
-        let mqtt_req_info = message.to_mqtt_req_info();
-        let response =
-            match self.get_monitor_node_delay(master_address, route_ctrl, message, uart_msg_sender)
-            {
-                Ok(res) => MqttMessage::new_with_req_info_body(
-                    mqtt_req_info,
-                    Some(PayloadBody::Flat(serde_json::to_value(res).unwrap())),
-                ),
-                Err(e) => {
-                    MqttMessage::new_with_req_info_status_reason(mqtt_req_info, Status::Failure, e)
-                }
-            };
-
-        self.metering.store(false, Ordering::Relaxed);
-        //concurrent_meter.handle_request(); // TODO
-
-        mqtt_msg_sender.send(response).unwrap();
-
-        Ok(())
+        self.mqtt_get_monitor_node_info::<MonitorNodeDelayRequest>(
+            master_address,
+            route_ctrl,
+            concurrent_meter,
+            message,
+            mqtt_msg_sender,
+            uart_msg_sender,
+        )
     }
 
     pub fn mqtt_get_monitor_node_data(
         &self,
         master_address: Address,
         route_ctrl: RouteCtrl,
-        _concurrent_meter: ConcurrentMeter,
+        concurrent_meter: ConcurrentMeter,
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
-        let mqtt_req_info = message.to_mqtt_req_info();
-        let response = match self.get_monitor_node_data(
+        self.mqtt_get_monitor_node_info::<MonitorNodeDataRequest>(
             master_address,
             route_ctrl,
+            concurrent_meter,
             message,
+            mqtt_msg_sender,
             uart_msg_sender,
-        ) {
-            Ok(res) => MqttMessage::new_with_req_info_body(
-                mqtt_req_info,
-                Some(PayloadBody::Flat(serde_json::to_value(res).unwrap())),
-            ),
-            Err(e) => {
-                MqttMessage::new_with_req_info_status_reason(mqtt_req_info, Status::Failure, e)
-            }
-        };
+        )
+    }
 
-        self.metering.store(false, Ordering::Relaxed);
-        //concurrent_meter.handle_request(); // TODO
-
-        mqtt_msg_sender.send(response).unwrap();
-
-        Ok(())
+    pub fn uart_notify_monitor_node_dalay(&self, delay: u16) {
+        let mut res = self.response.lock().unwrap();
+        *res = Some(Ok(MonitorNodeResponse::Delay(MonitorNodeDelayResponse {
+            delay,
+        })));
+        self.cond.notify_one();
     }
 
     pub fn uart_get_monitor_node_data(&self, message: UartMessage) -> Result<()> {
@@ -257,7 +291,7 @@ fn monitor_node_request<T>(
     message: MqttMessage,
     uart_msg_sender: &mpsc::Sender<UartMessage>,
 ) where
-    T: serde::de::DeserializeOwned + GetAcqAddr,
+    T: serde::de::DeserializeOwned + MonitorNodeOperation,
     T: Into<app_data::MonitorNodeRequest>,
 {
     let request: T = serde_json::from_str(message.payload()).unwrap();

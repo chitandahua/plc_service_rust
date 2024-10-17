@@ -281,6 +281,15 @@ impl Frame {
         self.ctrl_field.dir == Dir::Up && self.ctrl_field.prm == Prm::Master
     }
 
+    // 为cco上报的 但是为cco的回复 当前只有14H-F3
+    pub fn is_slave_report_response(&self) -> bool {
+        self.afn() == Afn::RouteDataRead && self.fn_num() == 3
+    }
+
+    pub fn is_master_response_request(&self) -> bool {
+        self.is_slave_report_response()
+    }
+
     pub fn is_master_response(&self) -> bool {
         self.ctrl_field.dir == Dir::Down && self.ctrl_field.prm == Prm::Slave
     }

@@ -32,7 +32,7 @@ mod route_data_forward;
 pub use route_data_forward::{DataForward, MonitorNodeRequest, MonitorNodeResponse};
 
 mod route_data_read;
-pub use route_data_read::{ClockDataResponse, RouteDataRead};
+pub use route_data_read::{ClockDataResponse, CommDelayRequest, CommDelayResponse, RouteDataRead};
 
 mod route_get;
 pub use route_get::{

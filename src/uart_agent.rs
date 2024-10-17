@@ -84,7 +84,11 @@ impl UartAgent {
             move || {
                 const MAX_RETRY: usize = 1; // 不重试
                 while let Ok(req_msg) = uart_requeset_receiver.recv() {
-                    let UartMessage { req_info, frame } = req_msg;
+                    let UartMessage {
+                        req_info,
+                        frame,
+                        extra_req_info,
+                    } = req_msg;
                     let is_response = frame.is_master_response();
                     debug!(
                         "recv {} frame {}",
@@ -94,6 +98,8 @@ impl UartAgent {
                         },
                         frame.to_hex_string()
                     );
+
+                    let is_response = is_response && !frame.is_master_response_request();
 
                     let mut cnt = 0;
                     {
@@ -149,7 +155,11 @@ impl UartAgent {
             let cur_req_info = cur_req_info.clone();
             move || loop {
                 while let Ok(req_msg) = concurrent_req_receiver.recv() {
-                    let UartMessage { req_info, frame } = req_msg;
+                    let UartMessage {
+                        req_info,
+                        frame,
+                        extra_req_info,
+                    } = req_msg;
                     debug!("recv concurrent request frame {}", frame.to_hex_string());
 
                     let seq = frame.get_seq();
@@ -185,31 +195,39 @@ impl UartAgent {
             match reader.read_response() {
                 Ok(Some(response)) => {
                     debug!("uart response {}", hex::encode(response.to_bytes()));
+                    let mut extra_req_info = None;
 
                     let req_info = {
                         // 根据response获取cmd
                         let mut is_serial_req = false;
                         let mut lock = cur_req_info.lock().unwrap();
-                        let info = if response.is_slave_report() {
-                            Some(ReqInfo::new(&response, None))
-                        } else if let Some(concurrent_req) =
-                            lock.concurrent_req_info.remove(&response.get_seq())
-                        {
-                            Some(concurrent_req.0)
-                        }
-                        // else if let Some(req) = lock.req_info.take()
-                        //   && response.match_req(req.seq_num())
-                        else if lock.req_info.is_some()
-                            && response.match_req(lock.req_info.as_ref().unwrap().seq_num())
-                        {
-                            is_serial_req = true;
-                            // 调用对应处理函数 锁外调用
-                            lock.req_info.take()
-                        } else {
-                            // no request or not match
-                            warn!("invalid response");
-                            None
-                        };
+                        let info =
+                            if response.is_slave_report() && !response.is_slave_report_response() {
+                                Some(ReqInfo::new(&response, None))
+                            } else if let Some(concurrent_req) =
+                                lock.concurrent_req_info.remove(&response.get_seq())
+                            {
+                                Some(concurrent_req.0)
+                            }
+                            // else if let Some(req) = lock.req_info.take()
+                            //   && response.match_req(req.seq_num())
+                            else if lock.req_info.is_some()
+                                && response.match_req(lock.req_info.as_ref().unwrap().seq_num())
+                            {
+                                is_serial_req = true;
+                                // 调用对应处理函数 锁外调用
+                                match response.is_slave_report_response() {
+                                    true => {
+                                        extra_req_info = lock.req_info.take();
+                                        Some(ReqInfo::new(&response, None))
+                                    }
+                                    false => lock.req_info.take(),
+                                }
+                            } else {
+                                // no request or not match
+                                warn!("invalid response");
+                                None
+                            };
 
                         if is_serial_req {
                             cond.notify_one();
@@ -221,7 +239,11 @@ impl UartAgent {
                         continue;
                     }
 
-                    match handler.uart_msg_handler(UartMessage::new(req_info.unwrap(), response)) {
+                    match handler.uart_msg_handler(UartMessage::new_with_extra_req_info(
+                        req_info.unwrap(),
+                        response,
+                        extra_req_info,
+                    )) {
                         Ok(_) => {}
                         Err(e) => {
                             error!(casue = ?e, "handle uart response error");

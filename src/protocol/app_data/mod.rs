@@ -17,6 +17,9 @@ pub use ctrl_cmd::{AddressSetRequest, CtrlCmd};
 mod init;
 pub use init::{InitOperation, InitRequest};
 
+mod meter_ctrl;
+pub use meter_ctrl::{MeterControl, PauseMetering, RestartMetering, ResumeMetering};
+
 mod meter_reading;
 pub use meter_reading::{ConcurrentReadMeterRequest, ConcurrentReadMeterResponse, MeterReading};
 
@@ -25,8 +28,8 @@ pub use query_data::{
     MasterIdInfoRequest, MasterIdInfoResponse, ModuleInfoRequest, ModuleInfoResponse, QueryData,
 };
 
-//mod route_data_forward;
-//pub use route_data_forward::{DataForward, MonitorNodeRequest, MonitorNodeResponse};
+mod route_data_forward;
+pub use route_data_forward::{DataForward, MonitorNodeRequest, MonitorNodeResponse};
 
 mod route_data_read;
 pub use route_data_read::{ClockDataResponse, RouteDataRead};

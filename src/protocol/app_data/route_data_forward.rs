@@ -1,12 +1,15 @@
 use anyhow::ensure;
+use num_enum::TryFromPrimitive;
+use std::fmt::Display;
 use std::fmt::Formatter;
-use std::fmt::{self, Display};
 
 use crate::protocol::app_data::{Address, Afn, AppDataError, ADDR_LEN};
 use crate::protocol::AppData;
 use crate::Result;
 
 // AFN 13H
+#[derive(Debug, TryFromPrimitive)]
+#[repr(u8)]
 pub enum DataForward {
     MonitorNode = 1,
 }
@@ -14,10 +17,10 @@ pub enum DataForward {
 const PREFIX_LEN: usize = 4;
 #[derive(Debug)]
 pub struct MonitorNodeRequest {
-    protocol_type: u8,
-    comm_delay_flag: u8,
-    node_addrs: Vec<Address>,
-    message: Vec<u8>,
+    pub protocol_type: u8,
+    pub comm_delay_flag: u8,
+    pub node_addrs: Vec<Address>,
+    pub message: Vec<u8>,
 }
 
 impl From<MonitorNodeRequest> for AppData {
@@ -43,10 +46,10 @@ impl From<MonitorNodeRequest> for AppData {
 
 #[derive(Debug, PartialEq)]
 pub struct MonitorNodeResponse {
-    up_time: u16,
-    protocol_type: u8,
-    message_len: u8,
-    message: Vec<u8>,
+    pub up_time: u16,
+    pub protocol_type: u8,
+    pub message_len: u8,
+    pub message: Vec<u8>,
 }
 
 impl TryFrom<AppData> for MonitorNodeResponse {

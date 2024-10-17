@@ -1,7 +1,7 @@
 use std::sync::mpsc;
 
-use crate::mqtt_message::MqttMessage;
-use crate::protocol::app_data::DenyResponse;
+use crate::mqtt_message::{MqttMessage, Status};
+use crate::protocol::app_data::{ConfirmResponse, DenyResponse};
 use crate::protocol::{AppData, Frame};
 use crate::request_info::{MqttReqInfo, UartMessage};
 use crate::service::IntoMqttMessage;
@@ -43,12 +43,28 @@ impl From<DenyResponse> for anyhow::Error {
     }
 }
 
-impl<T> From<UartResponse<T>> for Result<()> {
+impl<T> From<UartResponse<T>> for Result<T> {
     fn from(value: UartResponse<T>) -> Self {
+        match value {
+            UartResponse::Deny(response) => Err(response.into()),
+            UartResponse::Normal(t) => Ok(t),
+        }
+    }
+}
+
+impl From<UartResponse<ConfirmResponse>> for Result<()> {
+    fn from(value: UartResponse<ConfirmResponse>) -> Self {
         match value {
             UartResponse::Deny(response) => Err(response.into()),
             UartResponse::Normal(_) => Ok(()),
         }
+    }
+}
+
+pub fn mqtt_response_message(result: Result<()>, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+    match result {
+        Ok(_) => MqttMessage::new_with_req_info_body(mqtt_req_info, None),
+        Err(e) => MqttMessage::new_with_req_info_status_reason(mqtt_req_info, Status::Failure, e),
     }
 }
 

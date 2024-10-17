@@ -3,8 +3,8 @@ use tracing::debug;
 
 use crate::mqtt_message::Status;
 use crate::protocol::app_data::{
-    ActiveReport, Afn, CtrlCmd, InitOperation, MeterReading, QueryData, RouteDataRead, RouteQuery,
-    RouteSet,
+    ActiveReport, Afn, CtrlCmd, DataForward, InitOperation, MeterControl, MeterReading, QueryData,
+    RouteDataRead, RouteQuery, RouteSet,
 };
 use crate::request_info::{MqttReqInfo, ReqInfo};
 use crate::service::{
@@ -125,6 +125,11 @@ impl UartMsgHandler {
                         _ => unreachable!(),
                     }
                 }
+                // 内部操作
+                Afn::RouteCtrl => {
+                    let _ = MeterControl::try_from(fn_num).expect("invalid route ctrl fn");
+                    self.services.route_ctrl.uart_operate_metering(message)
+                }
                 _ => unreachable!(),
             };
             self.plc_init.notify(result);
@@ -195,6 +200,29 @@ impl UartMsgHandler {
         }
     }
 
+    fn uart_route_ctrl_handler(&mut self, message: UartMessage) -> Result<()> {
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        let fn_num = MeterControl::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
+        match fn_num {
+            MeterControl::Pause => self.services.route_ctrl.uart_operate_metering(message),
+            MeterControl::Resume => self.services.route_ctrl.uart_operate_metering(message),
+            MeterControl::Restart => self.services.route_ctrl.uart_operate_metering(message),
+        }
+    }
+
+    fn uart_route_data_forward_handler(&mut self, message: UartMessage) -> Result<()> {
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        let fn_num = DataForward::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
+        match fn_num {
+            DataForward::MonitorNode => self
+                .services
+                .monitor_node
+                .uart_get_monitor_node_data(message),
+        }
+    }
+
     fn uart_read_meter_handler(&mut self, message: UartMessage) -> Result<()> {
         let (afn, fn_num) = message.req_info.frame_key().to_tuple();
         let fn_num = MeterReading::try_from(fn_num)
@@ -228,6 +256,8 @@ impl UartMsgHandler {
             Afn::QueryData => self.uart_query_data_handler(message),
             Afn::RouteSet => self.uart_route_set_handler(message),
             Afn::RouteGet => self.uart_route_query_handler(message),
+            Afn::RouteCtrl => self.uart_route_ctrl_handler(message),
+            Afn::RouteDataForward => self.uart_route_data_forward_handler(message),
             Afn::CocurrentReadMeter => self.uart_read_meter_handler(message),
             Afn::Test => self.uart_test_handler(message),
             _ => anyhow::bail!(UartHandlerError::UnsupportedAfn(afn)),
@@ -303,6 +333,9 @@ impl UartTimeoutHandler {
             }
             (Afn::RouteSet, _) => {
                 self.services.node_manage.uart_operate_acq_files_timeout();
+            }
+            (Afn::RouteDataForward, 1) => {
+                todo!()
             }
             _ => match req_info.into_mqtt_req_info() {
                 Some(mqtt_req_info) => self.mqtt_timeout_cb(mqtt_req_info),

@@ -1,6 +1,8 @@
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::{PayloadBody, Status};
-use crate::protocol::{app_data, Address, AddressField, Frame};
+use crate::protocol::app_data::{self, Afn, RouteDataRead};
+use crate::protocol::{Address, AddressField, Frame};
+use crate::request_info::FrameKey;
 use crate::service::{parse_response::UartResponse, MqttReqInfo};
 use crate::{MqttMessage, MqttMsgHandler, ReqInfo, Result, UartMessage, APP_NAME};
 
@@ -82,7 +84,15 @@ impl MonitorNodeOperation for MonitorNodeDelayRequest {
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<PayloadBody> {
-        monitor_node_request::<Self>(master_address, message, uart_msg_sender);
+        monitor_node_request::<Self>(
+            master_address,
+            message,
+            uart_msg_sender,
+            Some(ReqInfo::new_with_key_no_seq(
+                FrameKey::new(Afn::RouteDataRead, RouteDataRead::CommDelay as u8),
+                None,
+            )),
+        );
         monitor_node
             .wait_delay()
             .and_then(|delay| monitor_node.wait_data().map(|_| delay))
@@ -101,7 +111,7 @@ impl MonitorNodeOperation for MonitorNodeDataRequest {
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<PayloadBody> {
-        monitor_node_request::<Self>(master_address, message, uart_msg_sender);
+        monitor_node_request::<Self>(master_address, message, uart_msg_sender, None);
         monitor_node
             .wait_data()
             .map(|data| PayloadBody::Flat(serde_json::to_value(data).unwrap()))
@@ -290,6 +300,7 @@ fn monitor_node_request<T>(
     master_address: Address,
     message: MqttMessage,
     uart_msg_sender: &mpsc::Sender<UartMessage>,
+    extra_req_info: Option<ReqInfo>,
 ) where
     T: serde::de::DeserializeOwned + MonitorNodeOperation,
     T: Into<app_data::MonitorNodeRequest>,
@@ -305,6 +316,10 @@ fn monitor_node_request<T>(
     );
     let req_info = ReqInfo::new(&frame, Some(mqtt_req_info));
     uart_msg_sender
-        .send(UartMessage::new(req_info, frame))
+        .send(UartMessage::new_with_extra_req_info(
+            req_info,
+            frame,
+            extra_req_info,
+        ))
         .unwrap();
 }

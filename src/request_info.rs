@@ -82,6 +82,14 @@ impl ReqInfo {
         }
     }
 
+    pub fn new_with_key_no_seq(frame_key: FrameKey, mqtt_req_info: Option<MqttReqInfo>) -> Self {
+        ReqInfo {
+            mqtt_req_info,
+            frame_key,
+            seq_num: 0,
+        }
+    }
+
     pub fn new_with_key(
         frame: &Frame,
         frame_key: FrameKey,

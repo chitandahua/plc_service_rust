@@ -21,6 +21,7 @@ struct UartTimeout {
 
 struct UartReqInfo {
     req_info: Option<ReqInfo>,
+    extra_req_info: Option<ReqInfo>,
     concurrent_req_info: HashMap<u8, (ReqInfo, Guard)>,
     writer: StreamWriter,
 }
@@ -48,6 +49,7 @@ impl UartAgent {
         Ok(UartAgent {
             cur_req_info: Arc::new(Mutex::new(UartReqInfo {
                 req_info: None,
+                extra_req_info: None,
                 concurrent_req_info: HashMap::new(),
                 writer,
             })),
@@ -99,13 +101,16 @@ impl UartAgent {
                         frame.to_hex_string()
                     );
 
-                    let is_response = is_response && !frame.is_master_response_request();
+                    // 若有extra_req_info 为响应实则当作请求
+                    // 当前仅14H-F3的回复
+                    let is_response = is_response && extra_req_info.is_none();
 
                     let mut cnt = 0;
                     {
                         let bytes = Into::<Vec<u8>>::into(frame);
                         let mut lock = cur_req_info.lock().unwrap();
                         lock.req_info = Some(req_info);
+                        lock.extra_req_info = extra_req_info;
 
                         while cnt < MAX_RETRY {
                             match lock.writer.write_request(&bytes) {
@@ -156,9 +161,7 @@ impl UartAgent {
             move || loop {
                 while let Ok(req_msg) = concurrent_req_receiver.recv() {
                     let UartMessage {
-                        req_info,
-                        frame,
-                        extra_req_info,
+                        req_info, frame, ..
                     } = req_msg;
                     debug!("recv concurrent request frame {}", frame.to_hex_string());
 
@@ -201,33 +204,33 @@ impl UartAgent {
                         // 根据response获取cmd
                         let mut is_serial_req = false;
                         let mut lock = cur_req_info.lock().unwrap();
-                        let info =
-                            if response.is_slave_report() && !response.is_slave_report_response() {
-                                Some(ReqInfo::new(&response, None))
-                            } else if let Some(concurrent_req) =
-                                lock.concurrent_req_info.remove(&response.get_seq())
-                            {
-                                Some(concurrent_req.0)
-                            }
-                            // else if let Some(req) = lock.req_info.take()
-                            //   && response.match_req(req.seq_num())
-                            else if lock.req_info.is_some()
-                                && response.match_req(lock.req_info.as_ref().unwrap().seq_num())
-                            {
-                                is_serial_req = true;
-                                // 调用对应处理函数 锁外调用
-                                match response.is_slave_report_response() {
-                                    true => {
-                                        extra_req_info = lock.req_info.take();
-                                        Some(ReqInfo::new(&response, None))
-                                    }
-                                    false => lock.req_info.take(),
+                        let info = if response.is_slave_report() && lock.extra_req_info.is_none() {
+                            Some(ReqInfo::new(&response, None))
+                        } else if let Some(concurrent_req) =
+                            lock.concurrent_req_info.remove(&response.get_seq())
+                        {
+                            Some(concurrent_req.0)
+                        }
+                        // else if let Some(req) = lock.req_info.take()
+                        //   && response.match_req(req.seq_num())
+                        else if lock.req_info.is_some()
+                            && response.match_req(lock.req_info.as_ref().unwrap().seq_num())
+                        {
+                            is_serial_req = true;
+                            // 调用对应处理函数 锁外调用
+                            match lock.extra_req_info.is_some() {
+                                true => {
+                                    extra_req_info = lock.req_info.take();
+                                    // 根据extra_req_info寻找实际的回调
+                                    lock.extra_req_info.take()
                                 }
-                            } else {
-                                // no request or not match
-                                warn!("invalid response");
-                                None
-                            };
+                                false => lock.req_info.take(),
+                            }
+                        } else {
+                            // no request or not match
+                            warn!("invalid response");
+                            None
+                        };
 
                         if is_serial_req {
                             cond.notify_one();

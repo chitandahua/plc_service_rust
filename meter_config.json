@@ -9,5 +9,6 @@
     "cache_queue_size": 10,
     "concurrent_addr": 32,
     "queue_aging_time": 30
-  }
+  },
+  "resume_interval": 90
 }

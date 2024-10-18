@@ -70,7 +70,11 @@ impl ModuleService {
         Ok(Self {
             master_address: Arc::new(MasterAddress::new()),
             node_manage: Arc::new(NodeManage::new(None)?),
-            concurrent_meter: ConcurrentMeter::new(&timer, meter_config.meter_reading.clone()),
+            concurrent_meter: ConcurrentMeter::new(
+                &timer,
+                meter_config.meter_reading.clone(),
+                metering_state.clone(),
+            ),
             device_info,
             monitor_node: MonitorNode::new(metering_state.clone()),
             route_ctrl: RouteCtrl::new(timer, meter_config.resume_interval),

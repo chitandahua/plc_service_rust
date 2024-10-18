@@ -1,8 +1,8 @@
 use chrono::{self, DateTime};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
-use std::ops::Deref;
+use std::ops::DerefMut;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use thiserror::Error;
 use timer::{Guard, Timer};
@@ -27,7 +27,7 @@ struct SampleCache {
 impl SampleCache {
     fn new() -> Self {
         SampleCache {
-            is_waiting_response: true,
+            is_waiting_response: false,
             msg_cache_queue: VecDeque::new(),
             last_operation_time: chrono::Utc::now(),
         }
@@ -42,6 +42,7 @@ impl SampleCache {
 pub struct ConcurrentMeter {
     concurrent_meter: Arc<ConcurrentMeterManager>,
     _aging_queue: Guard,
+    metering: Arc<AtomicBool>,
 }
 
 struct ConcurrentMeterManager {
@@ -102,7 +103,7 @@ impl IntoMqttMessage for ConcurrentReadMeterResponse {
 }
 
 impl ConcurrentMeter {
-    pub fn new(timer: &Timer, meter_config: MeterReadingConfig) -> Self {
+    pub fn new(timer: &Timer, meter_config: MeterReadingConfig, metering: Arc<AtomicBool>) -> Self {
         let concurrent_meter = Arc::new(ConcurrentMeterManager::new(meter_config));
 
         let queue_aging_time = concurrent_meter.meter_config.queue_aging_time as i64;
@@ -121,6 +122,7 @@ impl ConcurrentMeter {
         ConcurrentMeter {
             concurrent_meter,
             _aging_queue,
+            metering,
         }
     }
 
@@ -176,8 +178,8 @@ impl ConcurrentMeter {
         message: MqttMessage,
         master_address: Address,
         concurrent_msg_sender: &mpsc::Sender<UartMessage>,
-    ) -> Result<()> {
-        let sample_payload: SamplePayload = serde_json::from_str(message.payload())?;
+    ) {
+        let sample_payload: SamplePayload = serde_json::from_str(message.payload()).unwrap();
         let response_topic = format!(
             "{}{}{}{}",
             MqttTopic::get_app(message.topic()),
@@ -205,8 +207,9 @@ impl ConcurrentMeter {
             Some(extra_data),
         );
 
-        concurrent_msg_sender.send(UartMessage::new(req_info, frame))?;
-        Ok(())
+        concurrent_msg_sender
+            .send(UartMessage::new(req_info, frame))
+            .unwrap();
     }
 
     fn handle_next_request(
@@ -217,18 +220,15 @@ impl ConcurrentMeter {
     ) -> Result<()> {
         let mut sample_cache = self.concurrent_meter.sample_cache.lock().unwrap();
         if let Some(cache) = sample_cache.get_mut(&acq_addr) {
-            match cache.msg_cache_queue.is_empty() {
-                true => cache.is_waiting_response = false,
-                false => {
-                    let result = Self::mqtt_meter_reading_handler(
-                        cache.msg_cache_queue.pop_front().unwrap(),
+            match cache.msg_cache_queue.pop_front() {
+                None => cache.is_waiting_response = false,
+                Some(message) => {
+                    Self::mqtt_meter_reading_handler(
+                        message,
                         master_address,
                         concurrent_msg_sender,
                     );
-                    match result {
-                        Ok(_) => cache.is_waiting_response = true,
-                        Err(e) => return Err(e),
-                    }
+                    cache.is_waiting_response = true;
                 }
             }
         }
@@ -242,57 +242,88 @@ impl ConcurrentMeter {
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         concurrent_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
-        let value = serde_json::from_str::<Value>(message.payload())?;
-        let acq_addr = value["acqAddr"].as_str().unwrap();
-
+        let payload = serde_json::from_str::<SamplePayload>(message.payload())?;
         let topic = MqttTopic::transfer(message.topic());
         let token = message.get_token();
-        let result = {
-            let mut sample_cache = self.concurrent_meter.sample_cache.lock().unwrap();
 
-            if let Some(cache) = sample_cache.get_mut(acq_addr) {
-                match cache.is_waiting_response {
-                    true => {
-                        if cache.msg_cache_queue.len()
-                            >= self.concurrent_meter.meter_config.cache_queue_size
-                        {
-                            Err(ConcurrentMeterError::QueueLimit(
-                                self.concurrent_meter.meter_config.cache_queue_size,
-                            )
-                            .into())
-                        } else {
-                            cache.msg_cache_queue.push_back(message);
-                            cache.update_operation_time();
-                            Ok(())
-                        }
-                    }
-                    false => {
-                        cache.is_waiting_response = true;
-                        Self::mqtt_meter_reading_handler(
-                            message,
-                            master_address,
-                            concurrent_msg_sender,
-                        )
-                    }
-                }
-            } else if Self::concurrent_addr_num(sample_cache.deref())
+        let result = self.handle_meter_reading(
+            message,
+            master_address,
+            concurrent_msg_sender,
+            &payload.acq_addr,
+        );
+
+        let response = MqttMessage::new(topic, MqttPayload::new_with_token_result(token, result));
+
+        mqtt_msg_sender.send(response)?;
+        Ok(())
+    }
+
+    fn handle_meter_reading(
+        &self,
+        message: MqttMessage,
+        master_address: Address,
+        concurrent_msg_sender: &mpsc::Sender<UartMessage>,
+        acq_addr: &str,
+    ) -> Result<()> {
+        let mut sample_cache = self.concurrent_meter.sample_cache.lock().unwrap();
+
+        if !sample_cache.contains_key(acq_addr) {
+            if Self::concurrent_addr_num(&sample_cache)
                 >= self.concurrent_meter.meter_config.concurrent_addr
             {
-                Err(ConcurrentMeterError::AddrLimit(
+                return Err(ConcurrentMeterError::AddrLimit(
                     self.concurrent_meter.meter_config.concurrent_addr,
                 )
-                .into())
-            } else {
-                sample_cache.insert(acq_addr.to_string(), SampleCache::new());
-                Self::mqtt_meter_reading_handler(message, master_address, concurrent_msg_sender)
+                .into());
             }
-        };
+            sample_cache.insert(acq_addr.to_string(), SampleCache::new());
+        }
 
-        mqtt_msg_sender.send(MqttMessage::new(
-            topic,
-            MqttPayload::new_with_token_result(token, result),
-        ))?;
-        Ok(())
+        let cache = sample_cache.get_mut(acq_addr).unwrap();
+
+        if cache.is_waiting_response || self.metering.load(Ordering::Relaxed) {
+            self.handle_waiting_cache(cache, message)
+        } else {
+            Self::mqtt_meter_reading_handler(message, master_address, concurrent_msg_sender);
+            cache.is_waiting_response = true;
+            Ok(())
+        }
+    }
+
+    fn handle_waiting_cache(&self, cache: &mut SampleCache, message: MqttMessage) -> Result<()> {
+        if cache.msg_cache_queue.len() >= self.concurrent_meter.meter_config.cache_queue_size {
+            Err(ConcurrentMeterError::QueueLimit(
+                self.concurrent_meter.meter_config.cache_queue_size,
+            )
+            .into())
+        } else {
+            cache.msg_cache_queue.push_back(message);
+            cache.update_operation_time();
+            Ok(())
+        }
+    }
+
+    pub fn handle_cache_request(
+        &self,
+        master_address: Address,
+        concurrent_msg_sender: &mpsc::Sender<UartMessage>,
+    ) {
+        let mut sample_cache = self.concurrent_meter.sample_cache.lock().unwrap();
+        for cache in sample_cache.deref_mut().values_mut() {
+            if cache.is_waiting_response {
+                continue;
+            }
+
+            if let Some(message) = cache.msg_cache_queue.pop_front() {
+                Self::mqtt_meter_reading_handler(
+                    message,
+                    master_address.clone(),
+                    concurrent_msg_sender,
+                );
+                cache.is_waiting_response = true;
+            }
+        }
     }
 
     fn concurrent_acq_addr(message: &UartMessage) -> String {

@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::Duration;
 
-use crate::service::{ConcurrentMeter, RouteCtrl};
+use crate::service::RouteCtrl;
 
 #[derive(Clone)]
 pub struct MonitorNode {
@@ -226,7 +226,6 @@ impl MonitorNode {
         &self,
         master_address: Address,
         route_ctrl: RouteCtrl,
-        _concurrent_meter: ConcurrentMeter,
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
@@ -244,8 +243,6 @@ impl MonitorNode {
             }
         };
 
-        //concurrent_meter.handle_request(); // TODO
-
         mqtt_msg_sender.send(response).unwrap();
 
         Ok(())
@@ -255,7 +252,6 @@ impl MonitorNode {
         &self,
         master_address: Address,
         route_ctrl: RouteCtrl,
-        concurrent_meter: ConcurrentMeter,
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
@@ -263,7 +259,6 @@ impl MonitorNode {
         self.mqtt_get_monitor_node_info::<MonitorNodeDelayRequest>(
             master_address,
             route_ctrl,
-            concurrent_meter,
             message,
             mqtt_msg_sender,
             uart_msg_sender,
@@ -274,7 +269,6 @@ impl MonitorNode {
         &self,
         master_address: Address,
         route_ctrl: RouteCtrl,
-        concurrent_meter: ConcurrentMeter,
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
@@ -282,7 +276,6 @@ impl MonitorNode {
         self.mqtt_get_monitor_node_info::<MonitorNodeDataRequest>(
             master_address,
             route_ctrl,
-            concurrent_meter,
             message,
             mqtt_msg_sender,
             uart_msg_sender,

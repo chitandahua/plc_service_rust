@@ -284,25 +284,31 @@ impl MqttMsgHandler {
                             }
                             MqttTopicType::MonitorNode => {
                                 let master_address = services.master_address.get_master_address();
-                                services.monitor_node.mqtt_get_monitor_node_data(
-                                    master_address,
+                                let result = services.monitor_node.mqtt_get_monitor_node_data(
+                                    master_address.clone(),
                                     services.route_ctrl.clone(),
-                                    services.concurrent_meter.clone(),
                                     message,
                                     &mqtt_msg_sender,
                                     &uart_msg_sender,
-                                )
+                                );
+                                services
+                                    .concurrent_meter
+                                    .handle_cache_request(master_address, &concurrent_msg_sender);
+                                result
                             }
                             MqttTopicType::MonitorNodeDelay => {
                                 let master_address = services.master_address.get_master_address();
-                                services.monitor_node.mqtt_get_monitor_node_delay(
-                                    master_address,
+                                let result = services.monitor_node.mqtt_get_monitor_node_delay(
+                                    master_address.clone(),
                                     services.route_ctrl.clone(),
-                                    services.concurrent_meter.clone(),
                                     message,
                                     &mqtt_msg_sender,
                                     &uart_msg_sender,
-                                )
+                                );
+                                services
+                                    .concurrent_meter
+                                    .handle_cache_request(master_address, &concurrent_msg_sender);
+                                result
                             }
                             MqttTopicType::PauseMetering => services
                                 .route_ctrl

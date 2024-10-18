@@ -29,10 +29,11 @@ pub struct RouteCtrl {
     timer: Arc<Timer>,
     metering_state: Arc<Mutex<MeteringState>>,
     cond: Arc<Condvar>,
+    resume_interval: u32,
 }
 
 impl RouteCtrl {
-    pub fn new(timer: Arc<Timer>) -> Self {
+    pub fn new(timer: Arc<Timer>, resume_interval: u32) -> Self {
         Self {
             timer,
             metering_state: Arc::new(Mutex::new(MeteringState {
@@ -42,6 +43,7 @@ impl RouteCtrl {
                 result: None,
             })),
             cond: Arc::new(Condvar::new()),
+            resume_interval,
         }
     }
 
@@ -81,20 +83,20 @@ impl RouteCtrl {
         state: &mut MeteringState,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) {
-        state.resume_timer = Some(
-            self.timer
-                .schedule_with_delay(chrono::Duration::seconds(90), {
-                    let route_ctrl = self.clone();
-                    let uart_msg_sender = uart_msg_sender.clone();
-                    move || {
-                        tracing::debug!("auto resume metering...");
-                        let res = route_ctrl.auto_resume_metering(&uart_msg_sender);
-                        if let Err(e) = res {
-                            tracing::error!(cause = ?e, "resume metering failed");
-                        }
+        state.resume_timer = Some(self.timer.schedule_with_delay(
+            chrono::Duration::seconds(self.resume_interval as i64),
+            {
+                let route_ctrl = self.clone();
+                let uart_msg_sender = uart_msg_sender.clone();
+                move || {
+                    tracing::debug!("auto resume metering...");
+                    let res = route_ctrl.auto_resume_metering(&uart_msg_sender);
+                    if let Err(e) = res {
+                        tracing::error!(cause = ?e, "resume metering failed");
                     }
-                }),
-        );
+                }
+            },
+        ));
     }
 
     fn auto_resume_metering(&self, uart_msg_sender: &mpsc::Sender<UartMessage>) -> Result<()> {

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::protocol::app_data::Afn;
 use crate::protocol::Frame;
 use crate::MqttTopic;
@@ -144,6 +146,7 @@ pub struct UartMessage {
     pub req_info: ReqInfo,
     pub frame: Frame,
     pub extra_req_info: Option<ReqInfo>,
+    pub timeout: Option<Duration>,
 }
 
 impl UartMessage {
@@ -152,6 +155,16 @@ impl UartMessage {
             req_info,
             frame,
             extra_req_info: None,
+            timeout: None,
+        }
+    }
+
+    pub fn new_with_timeout(req_info: ReqInfo, frame: Frame, timeout: Duration) -> Self {
+        UartMessage {
+            req_info,
+            frame,
+            extra_req_info: None,
+            timeout: Some(timeout),
         }
     }
 
@@ -164,6 +177,7 @@ impl UartMessage {
             req_info,
             frame,
             extra_req_info,
+            timeout: None,
         }
     }
 }

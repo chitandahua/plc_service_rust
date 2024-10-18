@@ -340,7 +340,7 @@ impl UartTimeoutHandler {
                 self.services.node_manage.uart_operate_acq_files_timeout();
             }
             (Afn::RouteDataForward, 1) => {
-                todo!()
+                self.services.monitor_node.uart_monitor_node_timeout();
             }
             _ => match req_info.into_mqtt_req_info() {
                 Some(mqtt_req_info) => self.mqtt_timeout_cb(mqtt_req_info),

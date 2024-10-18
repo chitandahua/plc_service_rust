@@ -92,4 +92,8 @@ pub struct Args {
 
     #[command(flatten)]
     pub meter_reading: MeterReading,
+
+    /// metering auto resume interval
+    #[arg(long)]
+    pub resume: Option<u32>,
 }

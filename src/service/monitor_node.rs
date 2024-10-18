@@ -4,11 +4,14 @@ use crate::protocol::app_data::{self, Afn, RouteDataRead};
 use crate::protocol::{Address, AddressField, Frame};
 use crate::request_info::FrameKey;
 use crate::service::{parse_response::UartResponse, MqttReqInfo};
-use crate::{MqttMessage, MqttMsgHandler, ReqInfo, Result, UartMessage, APP_NAME};
+use crate::{
+    MqttMessage, MqttMsgHandler, MqttResponseError, ReqInfo, Result, UartMessage, APP_NAME,
+};
 
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use crate::service::{ConcurrentMeter, RouteCtrl};
 
@@ -46,7 +49,7 @@ struct MonitorNodeDataRequest {
     #[serde(rename = "proType")]
     pro_type: u8,
     #[serde(rename = "frameTimeout")]
-    _frame_timeout: u32,
+    frame_timeout: u32,
     #[serde(rename = "charTimeout")]
     _char_timeout: u32,
     data: String,
@@ -64,35 +67,36 @@ impl From<MonitorNodeDataRequest> for app_data::MonitorNodeRequest {
 }
 
 trait MonitorNodeOperation {
-    fn get_acq_addr(&self) -> Address;
-    fn monitor_node_operate(
-        monitor_node: &MonitorNode,
-        master_address: Address,
-        message: MqttMessage,
-        uart_msg_sender: &mpsc::Sender<UartMessage>,
-    ) -> Result<PayloadBody>;
+    fn into_uart_message(master_address: Address, message: MqttMessage) -> UartMessage;
+    fn wait_response(monitor_node: &MonitorNode) -> Result<PayloadBody>;
 }
 
 impl MonitorNodeOperation for MonitorNodeDelayRequest {
-    fn get_acq_addr(&self) -> Address {
-        Address::from(self.acq_addr.as_str())
-    }
+    fn into_uart_message(master_address: Address, message: MqttMessage) -> UartMessage {
+        let request: Self = serde_json::from_str(message.payload()).unwrap();
+        let mqtt_req_info = MqttReqInfo::new(message.topic(), message.get_token(), None);
 
-    fn monitor_node_operate(
-        monitor_node: &MonitorNode,
-        master_address: Address,
-        message: MqttMessage,
-        uart_msg_sender: &mpsc::Sender<UartMessage>,
-    ) -> Result<PayloadBody> {
-        monitor_node_request::<Self>(
-            master_address,
-            message,
-            uart_msg_sender,
+        let frame = Frame::new_request(
+            Some(AddressField::new(
+                master_address,
+                None,
+                Address::from(request.acq_addr.as_str()),
+            )),
+            app_data::MonitorNodeRequest::from(request),
+        );
+        let req_info = ReqInfo::new(&frame, Some(mqtt_req_info));
+
+        UartMessage::new_with_extra_req_info(
+            req_info,
+            frame,
             Some(ReqInfo::new_with_key_no_seq(
                 FrameKey::new(Afn::RouteDataRead, RouteDataRead::CommDelay as u8),
                 None,
             )),
-        );
+        )
+    }
+
+    fn wait_response(monitor_node: &MonitorNode) -> Result<PayloadBody> {
         monitor_node
             .wait_delay()
             .and_then(|delay| monitor_node.wait_data().map(|_| delay))
@@ -101,17 +105,24 @@ impl MonitorNodeOperation for MonitorNodeDelayRequest {
 }
 
 impl MonitorNodeOperation for MonitorNodeDataRequest {
-    fn get_acq_addr(&self) -> Address {
-        Address::from(self.acq_addr.as_str())
+    fn into_uart_message(master_address: Address, message: MqttMessage) -> UartMessage {
+        let request: Self = serde_json::from_str(message.payload()).unwrap();
+        let mqtt_req_info = MqttReqInfo::new(message.topic(), message.get_token(), None);
+        let timeout = Duration::from_secs(request.frame_timeout as u64);
+
+        let frame = Frame::new_request(
+            Some(AddressField::new(
+                master_address,
+                None,
+                Address::from(request.acq_addr.as_str()),
+            )),
+            app_data::MonitorNodeRequest::from(request),
+        );
+        let req_info = ReqInfo::new(&frame, Some(mqtt_req_info));
+        UartMessage::new_with_timeout(req_info, frame, timeout)
     }
 
-    fn monitor_node_operate(
-        monitor_node: &MonitorNode,
-        master_address: Address,
-        message: MqttMessage,
-        uart_msg_sender: &mpsc::Sender<UartMessage>,
-    ) -> Result<PayloadBody> {
-        monitor_node_request::<Self>(master_address, message, uart_msg_sender, None);
+    fn wait_response(monitor_node: &MonitorNode) -> Result<PayloadBody> {
         monitor_node
             .wait_data()
             .map(|data| PayloadBody::Flat(serde_json::to_value(data).unwrap()))
@@ -205,7 +216,9 @@ impl MonitorNode {
         route_ctrl.auto_pause_metering(uart_msg_sender)?;
 
         self.with_metering(|| {
-            R::monitor_node_operate(self, master_address, message, uart_msg_sender)
+            let uart_message = R::into_uart_message(master_address, message);
+            uart_msg_sender.send(uart_message).unwrap();
+            R::wait_response(self)
         })
     }
 
@@ -294,32 +307,10 @@ impl MonitorNode {
 
         Ok(())
     }
-}
 
-fn monitor_node_request<T>(
-    master_address: Address,
-    message: MqttMessage,
-    uart_msg_sender: &mpsc::Sender<UartMessage>,
-    extra_req_info: Option<ReqInfo>,
-) where
-    T: serde::de::DeserializeOwned + MonitorNodeOperation,
-    T: Into<app_data::MonitorNodeRequest>,
-{
-    let request: T = serde_json::from_str(message.payload()).unwrap();
-    let acq_addr = request.get_acq_addr();
-    let request: app_data::MonitorNodeRequest = request.into();
-    let mqtt_req_info = MqttReqInfo::new(message.topic(), message.get_token(), None);
-
-    let frame = Frame::new_request(
-        Some(AddressField::new(master_address, None, acq_addr)),
-        request,
-    );
-    let req_info = ReqInfo::new(&frame, Some(mqtt_req_info));
-    uart_msg_sender
-        .send(UartMessage::new_with_extra_req_info(
-            req_info,
-            frame,
-            extra_req_info,
-        ))
-        .unwrap();
+    pub fn uart_monitor_node_timeout(&self) {
+        let mut result = self.response.lock().unwrap();
+        *result = Some(Err(anyhow::anyhow!(MqttResponseError::Timeout)));
+        self.cond.notify_one();
+    }
 }

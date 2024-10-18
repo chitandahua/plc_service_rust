@@ -90,6 +90,7 @@ impl UartAgent {
                         req_info,
                         frame,
                         extra_req_info,
+                        timeout,
                     } = req_msg;
                     let is_response = frame.is_master_response();
                     debug!(
@@ -125,9 +126,11 @@ impl UartAgent {
                             }
 
                             let result = cond
-                                .wait_timeout_while(lock, config.timeout, |req| {
-                                    req.req_info.is_some()
-                                })
+                                .wait_timeout_while(
+                                    lock,
+                                    timeout.unwrap_or(config.timeout),
+                                    |req| req.req_info.is_some(),
+                                )
                                 .unwrap();
                             lock = result.0;
                             if !result.1.timed_out() {

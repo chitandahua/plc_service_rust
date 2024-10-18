@@ -73,7 +73,7 @@ impl ModuleService {
             concurrent_meter: ConcurrentMeter::new(&timer, meter_config.meter_reading.clone()),
             device_info,
             monitor_node: MonitorNode::new(metering_state.clone()),
-            route_ctrl: RouteCtrl::new(timer),
+            route_ctrl: RouteCtrl::new(timer, meter_config.resume_interval),
         })
     }
 

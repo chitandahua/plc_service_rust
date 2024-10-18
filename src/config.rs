@@ -25,6 +25,7 @@ pub struct MeterConfig {
     pub uart_timeout: u32,
     pub concurrent: ConcurrentConfig,
     pub meter_reading: MeterReadingConfig,
+    pub resume_interval: u32,
 }
 
 #[derive(Debug, Deserialize)]

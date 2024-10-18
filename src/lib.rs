@@ -187,6 +187,10 @@ fn set_meter_config(meter_config: &mut MeterConfig, args: &Args) {
     if let Some(queue_size) = args.meter_reading.queue_size {
         meter_config.meter_reading.cache_queue_size = queue_size;
     }
+
+    if let Some(resume_interval) = args.resume {
+        meter_config.resume_interval = resume_interval;
+    }
 }
 
 const APP_VERSION: &str = "ST01.000";

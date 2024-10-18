@@ -30,13 +30,13 @@ impl RouteDataRequest {
             None,
             CommDelayResponse::new(vec![]),
         );
+        let request = CommDelayRequest::try_from(message.frame.into_app_data())?;
 
         let original_req_info = message
             .extra_req_info
             .ok_or(anyhow::anyhow!("no original request info"))?;
         match original_req_info.frame_key().to_tuple() {
             (Afn::RouteDataForward, 1) => {
-                let request = CommDelayRequest::try_from(message.frame.into_app_data())?;
                 monitor_node.uart_notify_monitor_node_dalay(request.delay);
             }
             _ => unreachable!(),

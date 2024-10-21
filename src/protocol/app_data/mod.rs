@@ -14,6 +14,9 @@ pub use answer::{AnswerFn, ConfirmResponse, DenyResponse};
 mod ctrl_cmd;
 pub use ctrl_cmd::{AddressSetRequest, BroadcastRequest, CtrlCmd};
 
+mod data_trans;
+pub use data_trans::{DataTransfer, TransferFrameRequest, TransferFrameResponse};
+
 mod init;
 pub use init::{InitOperation, InitRequest};
 

@@ -3,8 +3,8 @@ use tracing::debug;
 
 use crate::mqtt_message::Status;
 use crate::protocol::app_data::{
-    ActiveReport, Afn, CtrlCmd, DataForward, InitOperation, MeterControl, MeterReading, QueryData,
-    RouteDataRead, RouteQuery, RouteSet,
+    ActiveReport, Afn, CtrlCmd, DataForward, DataTransfer, InitOperation, MeterControl,
+    MeterReading, QueryData, RouteDataRead, RouteQuery, RouteSet,
 };
 use crate::request_info::{MqttReqInfo, ReqInfo};
 use crate::service::{
@@ -161,6 +161,18 @@ impl UartMsgHandler {
         }
     }
 
+    fn uart_data_forward_handler(&mut self, message: UartMessage) -> Result<()> {
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        let fn_num = DataTransfer::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
+        match fn_num {
+            DataTransfer::TransferFrame => self
+                .services
+                .data_transfer
+                .uart_data_transfer_response(message),
+        }
+    }
+
     fn uart_ctrl_cmd_handler(&mut self, message: UartMessage) -> Result<()> {
         let (afn, fn_num) = message.req_info.frame_key().to_tuple();
         let fn_num = CtrlCmd::try_from(fn_num)
@@ -264,6 +276,7 @@ impl UartMsgHandler {
     fn uart_mqtt_handler(&mut self, message: UartMessage) -> Result<()> {
         let afn = message.req_info.frame_key().afn();
         match afn {
+            Afn::DataForward => self.uart_data_forward_handler(message),
             Afn::CtrlCmd => self.uart_ctrl_cmd_handler(message),
             Afn::QueryData => self.uart_query_data_handler(message),
             Afn::RouteSet => self.uart_route_set_handler(message),
@@ -348,6 +361,9 @@ impl UartTimeoutHandler {
             }
             (Afn::RouteDataForward, 1) => {
                 self.services.monitor_node.uart_monitor_node_timeout();
+            }
+            (Afn::DataForward, 1) => {
+                self.services.data_transfer.uart_data_transfer_timeout();
             }
             _ => match req_info.into_mqtt_req_info() {
                 Some(mqtt_req_info) => self.mqtt_timeout_cb(mqtt_req_info),

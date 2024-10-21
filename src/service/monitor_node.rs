@@ -1,5 +1,5 @@
 use crate::mqtt_handler::MqttTopicType;
-use crate::mqtt_message::{PayloadBody, Status};
+use crate::mqtt_message::PayloadBody;
 use crate::protocol::app_data::{self, Afn, RouteDataRead};
 use crate::protocol::{Address, AddressField, Frame};
 use crate::request_info::FrameKey;
@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::Duration;
 
-use crate::service::RouteCtrl;
+use crate::service::{IntoMqttMessage, RouteCtrl};
 
 #[derive(Clone)]
 pub struct MonitorNode {
@@ -68,7 +68,7 @@ impl From<MonitorNodeDataRequest> for app_data::MonitorNodeRequest {
 
 trait MonitorNodeOperation {
     fn into_uart_message(master_address: Address, message: MqttMessage) -> UartMessage;
-    fn wait_response(monitor_node: &MonitorNode) -> Result<PayloadBody>;
+    fn wait_response(monitor_node: &MonitorNode) -> impl IntoMqttMessage;
 }
 
 impl MonitorNodeOperation for MonitorNodeDelayRequest {
@@ -96,11 +96,10 @@ impl MonitorNodeOperation for MonitorNodeDelayRequest {
         )
     }
 
-    fn wait_response(monitor_node: &MonitorNode) -> Result<PayloadBody> {
+    fn wait_response(monitor_node: &MonitorNode) -> impl IntoMqttMessage {
         monitor_node
             .wait_delay()
             .and_then(|delay| monitor_node.wait_data().map(|_| delay))
-            .map(|delay| PayloadBody::Flat(serde_json::to_value(delay).unwrap()))
     }
 }
 
@@ -122,16 +121,23 @@ impl MonitorNodeOperation for MonitorNodeDataRequest {
         UartMessage::new_with_timeout(req_info, frame, timeout)
     }
 
-    fn wait_response(monitor_node: &MonitorNode) -> Result<PayloadBody> {
-        monitor_node
-            .wait_data()
-            .map(|data| PayloadBody::Flat(serde_json::to_value(data).unwrap()))
+    fn wait_response(monitor_node: &MonitorNode) -> impl IntoMqttMessage {
+        monitor_node.wait_data()
     }
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) struct MonitorNodeDelayResponse {
     pub delay: u16,
+}
+
+impl IntoMqttMessage for MonitorNodeDelayResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttMessage::new_with_req_info_body(
+            mqtt_req_info,
+            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
+        )
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -144,6 +150,15 @@ impl From<app_data::MonitorNodeResponse> for MonitorNodeDataResponse {
         MonitorNodeDataResponse {
             data: hex::encode(response.message),
         }
+    }
+}
+
+impl IntoMqttMessage for MonitorNodeDataResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttMessage::new_with_req_info_body(
+            mqtt_req_info,
+            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
+        )
     }
 }
 
@@ -212,14 +227,18 @@ impl MonitorNode {
         route_ctrl: RouteCtrl,
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
-    ) -> Result<PayloadBody> {
-        route_ctrl.auto_pause_metering(uart_msg_sender)?;
-
-        self.with_metering(|| {
-            let uart_message = R::into_uart_message(master_address, message);
-            uart_msg_sender.send(uart_message).unwrap();
-            R::wait_response(self)
-        })
+    ) -> MqttMessage {
+        let mqtt_req_info = message.to_mqtt_req_info();
+        route_ctrl
+            .auto_pause_metering(uart_msg_sender)
+            .map(|_| {
+                self.with_metering(move || {
+                    let uart_message = R::into_uart_message(master_address, message);
+                    uart_msg_sender.send(uart_message).unwrap();
+                    R::wait_response(self)
+                })
+            })
+            .into_mqtt_message(mqtt_req_info)
     }
 
     fn mqtt_get_monitor_node_info<R: MonitorNodeOperation>(
@@ -230,18 +249,8 @@ impl MonitorNode {
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
-        let mqtt_req_info = message.to_mqtt_req_info();
-        let response = match self.get_monitor_node_info::<R>(
-            master_address,
-            route_ctrl,
-            message,
-            uart_msg_sender,
-        ) {
-            Ok(res) => MqttMessage::new_with_req_info_body(mqtt_req_info, Some(res)),
-            Err(e) => {
-                MqttMessage::new_with_req_info_status_reason(mqtt_req_info, Status::Failure, e)
-            }
-        };
+        let response =
+            self.get_monitor_node_info::<R>(master_address, route_ctrl, message, uart_msg_sender);
 
         mqtt_msg_sender.send(response).unwrap();
 

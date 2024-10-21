@@ -117,6 +117,8 @@ pub enum MqttTopicType {
     // 广播
     BroadcastDelay,
     BroadcastCmd,
+    // 数据透传
+    DataTransfer,
 }
 
 struct MqttTopicFilter {
@@ -334,6 +336,16 @@ impl MqttMsgHandler {
                             MqttTopicType::BroadcastDelay => {
                                 Broadcast::mqtt_get_broadcast_delay(
                                     services.route_ctrl.clone(),
+                                    message,
+                                    &mqtt_msg_sender,
+                                    &uart_msg_sender,
+                                );
+                                Ok(())
+                            }
+                            MqttTopicType::DataTransfer => {
+                                let master_address = services.master_address.get_master_address();
+                                services.data_transfer.mqtt_data_transfer(
+                                    master_address,
                                     message,
                                     &mqtt_msg_sender,
                                     &uart_msg_sender,

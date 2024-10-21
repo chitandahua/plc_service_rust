@@ -4,6 +4,9 @@ pub use broadcast::Broadcast;
 mod concurrent_meter;
 pub use concurrent_meter::ConcurrentMeter;
 
+mod data_transfer;
+pub use data_transfer::DataTransfer;
+
 mod debug_method;
 pub use debug_method::DebugMethod;
 
@@ -49,6 +52,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use timer::Timer;
 
+use crate::mqtt_message::Status;
 use crate::protocol::app_data::{ConfirmResponse, DenyResponse};
 use crate::request_info::MqttReqInfo;
 use crate::{MeterConfig, MqttMessage, MqttMsgHandler, MqttPayload, Result};
@@ -61,6 +65,7 @@ pub struct ModuleService {
     pub device_info: DeviceInfo,
     pub monitor_node: MonitorNode,
     pub route_ctrl: RouteCtrl,
+    pub data_transfer: DataTransfer,
 }
 
 impl ModuleService {
@@ -81,6 +86,7 @@ impl ModuleService {
             device_info,
             monitor_node: MonitorNode::new(metering_state.clone()),
             route_ctrl: RouteCtrl::new(timer, meter_config.resume_interval),
+            data_transfer: DataTransfer::new(),
         })
     }
 
@@ -95,11 +101,26 @@ impl ModuleService {
         self.monitor_node.init(mqtt_msg_handler);
         self.route_ctrl.init(mqtt_msg_handler);
         Broadcast::init(mqtt_msg_handler);
+        DataTransfer::init(mqtt_msg_handler);
     }
 }
 
 pub trait IntoMqttMessage {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage;
+}
+
+impl<T> IntoMqttMessage for Result<T>
+where
+    T: IntoMqttMessage,
+{
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        match self {
+            Ok(t) => t.into_mqtt_message(mqtt_req_info),
+            Err(e) => {
+                MqttMessage::new_with_req_info_status_reason(mqtt_req_info, Status::Failure, e)
+            }
+        }
+    }
 }
 
 impl IntoMqttMessage for ConfirmResponse {

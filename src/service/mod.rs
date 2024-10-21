@@ -1,3 +1,6 @@
+mod broadcast;
+pub use broadcast::Broadcast;
+
 mod concurrent_meter;
 pub use concurrent_meter::ConcurrentMeter;
 
@@ -91,6 +94,7 @@ impl ModuleService {
         self.device_info.init(mqtt_msg_handler);
         self.monitor_node.init(mqtt_msg_handler);
         self.route_ctrl.init(mqtt_msg_handler);
+        Broadcast::init(mqtt_msg_handler);
     }
 }
 

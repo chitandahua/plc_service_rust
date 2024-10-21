@@ -8,6 +8,31 @@ use crate::protocol::AppData;
 #[repr(u8)]
 pub enum CtrlCmd {
     SetAddress = 1,
+    Broadcast = 3,
+}
+
+pub struct BroadcastRequest {
+    protocol_type: u8,
+    message: Vec<u8>,
+}
+
+impl BroadcastRequest {
+    pub fn new(protocol_type: u8, message: Vec<u8>) -> Self {
+        Self {
+            protocol_type,
+            message,
+        }
+    }
+}
+
+impl From<BroadcastRequest> for AppData {
+    fn from(value: BroadcastRequest) -> Self {
+        let mut data = Vec::new();
+        data.push(value.protocol_type);
+        data.push(value.message.len() as u8);
+        data.extend(value.message);
+        AppData::new(Afn::CtrlCmd, CtrlCmd::Broadcast as u8, Some(data))
+    }
 }
 
 pub struct AddressSetRequest {

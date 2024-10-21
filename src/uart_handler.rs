@@ -8,7 +8,7 @@ use crate::protocol::app_data::{
 };
 use crate::request_info::{MqttReqInfo, ReqInfo};
 use crate::service::{
-    DebugMethod, EventReport, HplcInfo, ModuleService, PlcInit, RouteDataRequest,
+    Broadcast, DebugMethod, EventReport, HplcInfo, ModuleService, PlcInit, RouteDataRequest,
 };
 use crate::{ModuleInfo, MqttMessage, MqttPayload};
 use crate::{MqttResponseError, Result, UartHandler, UartMessage};
@@ -112,6 +112,7 @@ impl UartMsgHandler {
                             .services
                             .master_address
                             .init_set_address_response(message),
+                        _ => unreachable!(),
                     }
                 }
                 Afn::RouteSet => {
@@ -154,6 +155,9 @@ impl UartMsgHandler {
             QueryData::GetMasterIdInfo => {
                 ModuleInfo::master_id_info_response(message, &self.mqtt_msg_sender)
             }
+            QueryData::BroadcastDelay => {
+                Broadcast::uart_broadcast_delay_response(message, &self.mqtt_msg_sender)
+            }
         }
     }
 
@@ -166,6 +170,9 @@ impl UartMsgHandler {
                 .services
                 .master_address
                 .uart_set_address(message, &self.mqtt_msg_sender)?,
+            CtrlCmd::Broadcast => {
+                Broadcast::uart_broadcast_cmd_response(message, &self.mqtt_msg_sender)?;
+            }
         }
         Ok(())
     }

@@ -1,5 +1,5 @@
 use crate::mqtt_message::Status;
-use crate::service::{DebugMethod, HplcInfo, MasterAddress, ModuleInfo, ModuleService};
+use crate::service::{Broadcast, DebugMethod, HplcInfo, MasterAddress, ModuleInfo, ModuleService};
 use crate::{schema_check, MqttHandler, MqttResponseError, PlcDevice, Result};
 use crate::{MqttMessage, UartMessage};
 
@@ -114,6 +114,9 @@ pub enum MqttTopicType {
     PauseMetering,
     RestartMetering,
     ResumeMetering,
+    // 广播
+    BroadcastDelay,
+    BroadcastCmd,
 }
 
 struct MqttTopicFilter {
@@ -319,6 +322,24 @@ impl MqttMsgHandler {
                             MqttTopicType::ResumeMetering => services
                                 .route_ctrl
                                 .mqtt_resume_metering(message, &mqtt_msg_sender, &uart_msg_sender),
+                            MqttTopicType::BroadcastCmd => {
+                                Broadcast::mqtt_broadcast_cmd(
+                                    services.route_ctrl.clone(),
+                                    message,
+                                    &mqtt_msg_sender,
+                                    &uart_msg_sender,
+                                );
+                                Ok(())
+                            }
+                            MqttTopicType::BroadcastDelay => {
+                                Broadcast::mqtt_get_broadcast_delay(
+                                    services.route_ctrl.clone(),
+                                    message,
+                                    &mqtt_msg_sender,
+                                    &uart_msg_sender,
+                                );
+                                Ok(())
+                            }
                         };
 
                     if let Err(e) = result {

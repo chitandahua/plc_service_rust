@@ -12,8 +12,66 @@ use crate::Result;
 #[derive(Debug, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 pub enum QueryData {
+    BroadcastDelay = 9,
     GetModuleInfo = 10,
     GetMasterIdInfo = 12,
+}
+
+pub struct BroadcastDelayRequest {
+    protocol_type: u8,
+    message: Vec<u8>,
+}
+
+impl BroadcastDelayRequest {
+    pub fn new(protocol_type: u8, message: Vec<u8>) -> Self {
+        Self {
+            protocol_type,
+            message,
+        }
+    }
+}
+
+impl From<BroadcastDelayRequest> for AppData {
+    fn from(value: BroadcastDelayRequest) -> Self {
+        let mut data = Vec::new();
+        data.push(value.protocol_type);
+        data.push(value.message.len() as u8);
+        data.extend(value.message);
+        AppData::new(Afn::QueryData, QueryData::BroadcastDelay as u8, Some(data))
+    }
+}
+
+const PREFIX_LEN: usize = 4;
+#[allow(dead_code)]
+pub struct BroadcastDelayResponse {
+    pub delay: u16,
+    protocol_type: u8,
+    message_len: u8,
+    message: Vec<u8>,
+}
+
+impl TryFrom<AppData> for BroadcastDelayResponse {
+    type Error = crate::Error;
+    fn try_from(app_data: AppData) -> Result<Self> {
+        ensure!(
+            app_data.data_length() >= PREFIX_LEN,
+            AppDataError::DataLength(app_data.data_length())
+        );
+        let message_len = app_data.data_units.as_ref().unwrap()[3] as usize;
+        app_data.check(
+            Afn::QueryData,
+            QueryData::BroadcastDelay as u8,
+            PREFIX_LEN + message_len,
+        )?;
+
+        let data_units = app_data.data_units.unwrap();
+        Ok(BroadcastDelayResponse {
+            delay: u16::from_le_bytes(data_units[0..2].try_into().unwrap()),
+            protocol_type: data_units[2],
+            message_len: message_len as u8,
+            message: data_units[PREFIX_LEN..].to_vec(),
+        })
+    }
 }
 
 pub struct ModuleInfoRequest;

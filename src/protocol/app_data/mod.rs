@@ -12,7 +12,7 @@ mod answer;
 pub use answer::{AnswerFn, ConfirmResponse, DenyResponse};
 
 mod ctrl_cmd;
-pub use ctrl_cmd::{AddressSetRequest, CtrlCmd};
+pub use ctrl_cmd::{AddressSetRequest, BroadcastRequest, CtrlCmd};
 
 mod init;
 pub use init::{InitOperation, InitRequest};
@@ -25,7 +25,8 @@ pub use meter_reading::{ConcurrentReadMeterRequest, ConcurrentReadMeterResponse,
 
 mod query_data;
 pub use query_data::{
-    MasterIdInfoRequest, MasterIdInfoResponse, ModuleInfoRequest, ModuleInfoResponse, QueryData,
+    BroadcastDelayRequest, BroadcastDelayResponse, MasterIdInfoRequest, MasterIdInfoResponse,
+    ModuleInfoRequest, ModuleInfoResponse, QueryData,
 };
 
 mod route_data_forward;

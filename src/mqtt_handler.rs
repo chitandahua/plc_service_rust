@@ -344,13 +344,16 @@ impl MqttMsgHandler {
                             }
                             MqttTopicType::DataTransfer => {
                                 let master_address = services.master_address.get_master_address();
-                                services.data_transfer.mqtt_data_transfer(
-                                    master_address,
+                                let result = services.data_transfer.mqtt_data_transfer(
+                                    master_address.clone(),
                                     message,
                                     &mqtt_msg_sender,
                                     &uart_msg_sender,
                                 );
-                                Ok(())
+                                services
+                                    .concurrent_meter
+                                    .handle_cache_request(master_address, &concurrent_msg_sender);
+                                result
                             }
                         };
 

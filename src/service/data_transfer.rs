@@ -11,11 +11,13 @@ use crate::service::parse_response::UartResponse;
 use crate::{MqttMessage, MqttMsgHandler, MqttResponseError, Result, APP_NAME};
 
 use crate::service::{IntoMqttMessage, MqttReqInfo};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::Duration;
 
 #[derive(Clone)]
 pub struct DataTransfer {
+    metering: Arc<AtomicBool>,
     result: Arc<Mutex<Option<Result<MqttDataTransferResponse>>>>,
     cond: Arc<Condvar>,
 }
@@ -62,8 +64,9 @@ impl IntoMqttMessage for MqttDataTransferResponse {
 }
 
 impl DataTransfer {
-    pub fn new() -> Self {
+    pub fn new(metering: Arc<AtomicBool>) -> Self {
         Self {
+            metering,
             result: Arc::new(Mutex::new(None)),
             cond: Arc::new(Condvar::new()),
         }
@@ -77,13 +80,23 @@ impl DataTransfer {
         mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::DataTransfer, schema);
     }
 
+    fn with_metering<F, T>(&self, f: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        self.metering.store(true, Ordering::Relaxed);
+        let result = f();
+        self.metering.store(false, Ordering::Relaxed);
+        result
+    }
+
     pub fn mqtt_data_transfer(
         &self,
         master_address: Address,
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
-    ) {
+    ) -> Result<()> {
         let request: MqttDataTransferRequest = serde_json::from_str(message.payload()).unwrap();
         let mqtt_req_info = message.to_mqtt_req_info();
         let timeout = Duration::from_secs(request.frame_timeout as u64);
@@ -97,24 +110,29 @@ impl DataTransfer {
             TransferFrameRequest::from(request),
         );
         let req_info = ReqInfo::new(&frame, Some(mqtt_req_info));
-        uart_msg_sender
-            .send(UartMessage::new_with_timeout(req_info, frame, timeout))
-            .unwrap();
 
-        let mut result = self.result.lock().unwrap();
-        result = self
-            .cond
-            .wait_while(result, |result| result.is_none())
-            .unwrap();
+        self.with_metering(move || {
+            uart_msg_sender
+                .send(UartMessage::new_with_timeout(req_info, frame, timeout))
+                .unwrap();
 
-        mqtt_msg_sender
-            .send(
-                result
-                    .take()
-                    .unwrap()
-                    .into_mqtt_message(message.to_mqtt_req_info()),
-            )
-            .unwrap()
+            let mut result = self.result.lock().unwrap();
+            result = self
+                .cond
+                .wait_while(result, |result| result.is_none())
+                .unwrap();
+
+            mqtt_msg_sender
+                .send(
+                    result
+                        .take()
+                        .unwrap()
+                        .into_mqtt_message(message.to_mqtt_req_info()),
+                )
+                .unwrap()
+        });
+
+        Ok(())
     }
 
     fn notify(&self, result: Result<MqttDataTransferResponse>) {

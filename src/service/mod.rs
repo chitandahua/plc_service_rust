@@ -86,7 +86,7 @@ impl ModuleService {
             device_info,
             monitor_node: MonitorNode::new(metering_state.clone()),
             route_ctrl: RouteCtrl::new(timer, meter_config.resume_interval),
-            data_transfer: DataTransfer::new(),
+            data_transfer: DataTransfer::new(metering_state.clone()),
         })
     }
 

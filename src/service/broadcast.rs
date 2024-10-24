@@ -66,7 +66,7 @@ impl Broadcast {
     }
 
     pub fn mqtt_get_broadcast_delay(
-        route_ctrl: RouteCtrl,
+        route_ctrl: &RouteCtrl,
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
@@ -88,14 +88,17 @@ impl Broadcast {
     }
 
     pub fn uart_broadcast_delay_response(
+        route_ctrl: &RouteCtrl,
         message: UartMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
+        route_ctrl.uart_response_update_resume_timer(uart_msg_sender);
         uart_response_mqtt_handler::<BroadcastDelayResponse>(message, mqtt_msg_sender)
     }
 
     pub fn mqtt_broadcast_cmd(
-        route_ctrl: RouteCtrl,
+        route_ctrl: &RouteCtrl,
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
@@ -117,9 +120,12 @@ impl Broadcast {
     }
 
     pub fn uart_broadcast_cmd_response(
+        route_ctrl: &RouteCtrl,
         message: UartMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
+        route_ctrl.uart_response_update_resume_timer(uart_msg_sender);
         uart_response_mqtt_handler::<ConfirmResponse>(message, mqtt_msg_sender)
     }
 }

@@ -19,7 +19,6 @@ enum MeterState {
 
 struct MeteringState {
     state: MeterState,
-    auto: bool,
     resume_timer: Option<Guard>,
     result: Option<Result<()>>,
 }
@@ -38,7 +37,6 @@ impl RouteCtrl {
             timer,
             metering_state: Arc::new(Mutex::new(MeteringState {
                 state: MeterState::Resume,
-                auto: false,
                 resume_timer: None,
                 result: None,
             })),
@@ -66,19 +64,14 @@ impl RouteCtrl {
         mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::RestartMetering, schema);
     }
 
-    fn update_metering_state(
-        state: &mut MeteringState,
-        auto: bool,
-        meter_state: Option<MeterState>,
-    ) {
-        state.auto = auto;
+    fn update_metering_state(state: &mut MeteringState, meter_state: Option<MeterState>) {
         state.state = meter_state.unwrap_or(MeterState::Resume); // TODO
                                                                  //if let Some(s) = meter_state {
                                                                  //    state.state = s;
                                                                  //}
     }
 
-    fn update_resume_timer(
+    fn add_resume_timer(
         &self,
         state: &mut MeteringState,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
@@ -99,6 +92,21 @@ impl RouteCtrl {
         ));
     }
 
+    fn update_resume_timer(
+        &self,
+        state: &mut MeteringState,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) {
+        if state.resume_timer.is_some() {
+            self.add_resume_timer(state, uart_msg_sender);
+        }
+    }
+
+    pub fn uart_response_update_resume_timer(&self, uart_msg_sender: &mpsc::Sender<UartMessage>) {
+        let mut state = self.metering_state.lock().unwrap();
+        self.update_resume_timer(state.deref_mut(), uart_msg_sender);
+    }
+
     fn auto_resume_metering(&self, uart_msg_sender: &mpsc::Sender<UartMessage>) -> Result<()> {
         let mut state = self.metering_state.lock().unwrap();
         match state.state == MeterState::Resume {
@@ -111,7 +119,7 @@ impl RouteCtrl {
                 );
                 state = self.cond.wait_while(state, |s| s.result.is_none()).unwrap();
                 state.result.take().unwrap().map(|_| {
-                    Self::update_metering_state(state.deref_mut(), true, Some(MeterState::Resume));
+                    Self::update_metering_state(state.deref_mut(), Some(MeterState::Resume));
                 })
             }
         }
@@ -134,8 +142,8 @@ impl RouteCtrl {
                 );
                 state = self.cond.wait_while(state, |s| s.result.is_none()).unwrap();
                 state.result.take().unwrap().map(|_| {
-                    Self::update_metering_state(state.deref_mut(), true, Some(MeterState::Pause));
-                    self.update_resume_timer(state.deref_mut(), uart_msg_sender);
+                    Self::update_metering_state(state.deref_mut(), Some(MeterState::Pause));
+                    self.add_resume_timer(state.deref_mut(), uart_msg_sender);
                 })
             }
         }
@@ -166,7 +174,7 @@ impl RouteCtrl {
         };
 
         if result.is_ok() {
-            Self::update_metering_state(state.deref_mut(), false, meter_state);
+            Self::update_metering_state(state.deref_mut(), meter_state);
         }
 
         state.resume_timer = None;

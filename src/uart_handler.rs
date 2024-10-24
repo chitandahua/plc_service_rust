@@ -159,9 +159,12 @@ impl UartMsgHandler {
             QueryData::GetMasterIdInfo => {
                 ModuleInfo::master_id_info_response(message, &self.mqtt_msg_sender)
             }
-            QueryData::BroadcastDelay => {
-                Broadcast::uart_broadcast_delay_response(message, &self.mqtt_msg_sender)
-            }
+            QueryData::BroadcastDelay => Broadcast::uart_broadcast_delay_response(
+                &self.services.route_ctrl,
+                message,
+                &self.mqtt_msg_sender,
+                &self.uart_msg_sender,
+            ),
         }
     }
 
@@ -189,7 +192,12 @@ impl UartMsgHandler {
                 .master_address
                 .uart_set_address(message, &self.mqtt_msg_sender)?,
             CtrlCmd::Broadcast => {
-                Broadcast::uart_broadcast_cmd_response(message, &self.mqtt_msg_sender)?;
+                Broadcast::uart_broadcast_cmd_response(
+                    &self.services.route_ctrl,
+                    message,
+                    &self.mqtt_msg_sender,
+                    &self.uart_msg_sender,
+                )?;
             }
         }
         Ok(())
@@ -252,9 +260,11 @@ impl UartMsgHandler {
         match fn_num {
             DataForward::MonitorNode => {
                 self.meter_state.receive_message();
-                self.services
-                    .monitor_node
-                    .uart_get_monitor_node_data(message)
+                self.services.monitor_node.uart_get_monitor_node_data(
+                    &self.services.route_ctrl,
+                    message,
+                    &self.uart_msg_sender,
+                )
             }
         }
     }

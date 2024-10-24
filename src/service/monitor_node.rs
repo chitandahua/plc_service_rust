@@ -224,7 +224,7 @@ impl MonitorNode {
     fn get_monitor_node_info<R: MonitorNodeOperation>(
         &self,
         master_address: Address,
-        route_ctrl: RouteCtrl,
+        route_ctrl: &RouteCtrl,
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> MqttMessage {
@@ -244,7 +244,7 @@ impl MonitorNode {
     fn mqtt_get_monitor_node_info<R: MonitorNodeOperation>(
         &self,
         master_address: Address,
-        route_ctrl: RouteCtrl,
+        route_ctrl: &RouteCtrl,
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
@@ -260,7 +260,7 @@ impl MonitorNode {
     pub fn mqtt_get_monitor_node_delay(
         &self,
         master_address: Address,
-        route_ctrl: RouteCtrl,
+        route_ctrl: &RouteCtrl,
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
@@ -277,7 +277,7 @@ impl MonitorNode {
     pub fn mqtt_get_monitor_node_data(
         &self,
         master_address: Address,
-        route_ctrl: RouteCtrl,
+        route_ctrl: &RouteCtrl,
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
@@ -299,13 +299,20 @@ impl MonitorNode {
         self.cond.notify_one();
     }
 
-    pub fn uart_get_monitor_node_data(&self, message: UartMessage) -> Result<()> {
+    pub fn uart_get_monitor_node_data(
+        &self,
+        route_ctrl: &RouteCtrl,
+        message: UartMessage,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) -> Result<()> {
         let result: Result<app_data::MonitorNodeResponse> =
             UartResponse::<app_data::MonitorNodeResponse>::try_from(message.frame)?.into();
         let result = result.map(MonitorNodeDataResponse::from);
         let mut res = self.response.lock().unwrap();
         *res = Some(result.map(MonitorNodeResponse::Data));
         self.cond.notify_one();
+
+        route_ctrl.uart_response_update_resume_timer(uart_msg_sender);
 
         Ok(())
     }

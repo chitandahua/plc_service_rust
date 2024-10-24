@@ -293,7 +293,7 @@ impl MqttMsgHandler {
                                 let master_address = services.master_address.get_master_address();
                                 let result = services.monitor_node.mqtt_get_monitor_node_data(
                                     master_address.clone(),
-                                    services.route_ctrl.clone(),
+                                    &services.route_ctrl,
                                     message,
                                     &mqtt_msg_sender,
                                     &uart_msg_sender,
@@ -307,7 +307,7 @@ impl MqttMsgHandler {
                                 let master_address = services.master_address.get_master_address();
                                 let result = services.monitor_node.mqtt_get_monitor_node_delay(
                                     master_address.clone(),
-                                    services.route_ctrl.clone(),
+                                    &services.route_ctrl,
                                     message,
                                     &mqtt_msg_sender,
                                     &uart_msg_sender,
@@ -328,7 +328,7 @@ impl MqttMsgHandler {
                                 .mqtt_resume_metering(message, &mqtt_msg_sender, &uart_msg_sender),
                             MqttTopicType::BroadcastCmd => {
                                 Broadcast::mqtt_broadcast_cmd(
-                                    services.route_ctrl.clone(),
+                                    &services.route_ctrl,
                                     message,
                                     &mqtt_msg_sender,
                                     &uart_msg_sender,
@@ -337,7 +337,7 @@ impl MqttMsgHandler {
                             }
                             MqttTopicType::BroadcastDelay => {
                                 Broadcast::mqtt_get_broadcast_delay(
-                                    services.route_ctrl.clone(),
+                                    &services.route_ctrl,
                                     message,
                                     &mqtt_msg_sender,
                                     &uart_msg_sender,

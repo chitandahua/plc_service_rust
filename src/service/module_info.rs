@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc;
 
 use crate::mqtt_handler::MqttTopicType;
@@ -18,6 +19,8 @@ use crate::{MqttMessage, MqttMsgHandler, ReqInfo, Result, APP_NAME};
 
 pub struct ModuleInfo;
 
+static AUTO_READING: AtomicU8 = AtomicU8::new(0);
+
 impl ModuleInfo {
     pub fn slave_module_info_report(
         message: UartMessage,
@@ -33,6 +36,8 @@ impl ModuleInfo {
                 let req_info = ReqInfo::new(&response_frame, None);
                 let _ = uart_msg_sender.send(UartMessage::new(req_info, response_frame));
 
+                AUTO_READING.store(response.metering_mode & 0x10, Ordering::Relaxed);
+
                 Ok(response.main_node_addr)
             }
         }
@@ -43,8 +48,15 @@ impl ModuleInfo {
 
         match response {
             UartResponse::Deny(response) => Err(response.into()),
-            UartResponse::Normal(response) => Ok(response.main_node_addr),
+            UartResponse::Normal(response) => {
+                AUTO_READING.store(response.metering_mode & 0x10, Ordering::Relaxed);
+                Ok(response.main_node_addr)
+            }
         }
+    }
+
+    pub fn auto_reading_meter() -> u8 {
+        AUTO_READING.load(Ordering::Relaxed)
     }
 
     pub fn module_info_response(

@@ -122,7 +122,7 @@ impl StreamReader {
                 }
                 n => {
                     self.buffer.put(&buffer[..n]);
-                    debug!("read data len {}", n)
+                    debug!("read data({}): {}", n, hex::encode(&buffer[..n]))
                 }
             }
         }

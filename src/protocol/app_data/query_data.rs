@@ -166,7 +166,7 @@ impl TryFrom<AppData> for ModuleInfoResponse {
                 .map(|x| u16::from_le_bytes(x.try_into().unwrap()))
                 .collect(),
             // Initialize other fields here...
-            metering_mode: 0,
+            metering_mode: (data_unit[0] & 0xc0) >> 6,
             node_info_mode: 0,
             route_management_mode: 0,
             broadcast_cmd_mode: 0,

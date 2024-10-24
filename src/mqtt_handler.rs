@@ -119,6 +119,8 @@ pub enum MqttTopicType {
     BroadcastCmd,
     // 数据透传
     DataTransfer,
+    // 抄表状态
+    MeteringState,
 }
 
 struct MqttTopicFilter {
@@ -354,6 +356,12 @@ impl MqttMsgHandler {
                                     .concurrent_meter
                                     .handle_cache_request(master_address, &concurrent_msg_sender);
                                 result
+                            }
+                            MqttTopicType::MeteringState => {
+                                services
+                                    .meter_state
+                                    .mqtt_get_metering_state(message, &uart_msg_sender);
+                                Ok(())
                             }
                         };
 

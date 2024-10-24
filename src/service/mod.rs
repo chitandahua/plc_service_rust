@@ -19,6 +19,9 @@ pub use event_report::EventReport;
 mod hplc_info;
 pub use hplc_info::HplcInfo;
 
+mod meter_state;
+pub use meter_state::MeterState;
+
 mod module_info;
 pub use module_info::ModuleInfo;
 
@@ -66,6 +69,7 @@ pub struct ModuleService {
     pub monitor_node: MonitorNode,
     pub route_ctrl: RouteCtrl,
     pub data_transfer: DataTransfer,
+    pub meter_state: MeterState,
 }
 
 impl ModuleService {
@@ -87,6 +91,7 @@ impl ModuleService {
             monitor_node: MonitorNode::new(metering_state.clone()),
             route_ctrl: RouteCtrl::new(timer, meter_config.resume_interval),
             data_transfer: DataTransfer::new(metering_state.clone()),
+            meter_state: MeterState::new(),
         })
     }
 
@@ -102,6 +107,7 @@ impl ModuleService {
         self.route_ctrl.init(mqtt_msg_handler);
         Broadcast::init(mqtt_msg_handler);
         DataTransfer::init(mqtt_msg_handler);
+        MeterState::init(mqtt_msg_handler);
     }
 }
 

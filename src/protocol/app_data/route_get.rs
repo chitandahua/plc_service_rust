@@ -13,6 +13,7 @@ use super::ADDR_LEN;
 pub enum RouteQuery {
     NodeNumber = 1,
     NodeInfo = 2,
+    RunningStatus = 4,
     SlaveModuleId = 7,
     NodeLineInfo = 31,
     IdInfo = 40,
@@ -467,6 +468,102 @@ impl TryFrom<AppData> for SlaveModuleIdResponse {
             total_node_number,
             node_number: node_number as u8,
             slave_module_id_infos,
+        })
+    }
+}
+
+pub struct RunningStatusRequest;
+
+impl From<RunningStatusRequest> for AppData {
+    fn from(_: RunningStatusRequest) -> Self {
+        AppData::new(Afn::RouteGet, RouteQuery::RunningStatus as u8, None)
+    }
+}
+
+#[allow(dead_code)]
+pub struct RunningStatus {
+    error_code: u8,
+    report_event_flag: u8,
+    work_flag: u8,
+    route_finish_flag: u8,
+}
+
+impl From<u8> for RunningStatus {
+    fn from(value: u8) -> Self {
+        Self {
+            error_code: (value & 0xf0) >> 4,
+            report_event_flag: (value & 0x04) >> 2,
+            work_flag: (value & 0x02) >> 1,
+            route_finish_flag: value & 0x01,
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub struct WorkStatus {
+    meter_status: u8,
+    area_identify_status: u8,
+    report_event_flag: u8,
+    register_permit: u8,
+    work_status: u8,
+}
+
+impl From<u8> for WorkStatus {
+    fn from(value: u8) -> Self {
+        Self {
+            meter_status: (value & 0xc0) >> 6,
+            area_identify_status: (value & 0x08) >> 3,
+            report_event_flag: (value & 0x04) >> 2,
+            register_permit: (value & 0x02) >> 1,
+            work_status: value & 0x01,
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub struct RunningStatusResponse {
+    running_status: RunningStatus,
+    total_node_number: u16,
+    meter_node_number: u16,
+    relay_meter_node_number: u16,
+    work_status: WorkStatus,
+    comm_speed: u16,
+    relay_level: [u8; 3],
+    work_step: [u8; 3],
+}
+
+#[derive(PartialEq, TryFromPrimitive)]
+#[repr(u8)]
+pub enum CurrentStatus {
+    Metering = 0,
+    Searching = 1,
+    Upgrading = 2,
+    Other = 3,
+}
+
+impl RunningStatusResponse {
+    pub fn current_status(&self) -> CurrentStatus {
+        CurrentStatus::try_from(self.work_status.meter_status).unwrap()
+    }
+}
+
+impl TryFrom<AppData> for RunningStatusResponse {
+    type Error = crate::Error;
+
+    fn try_from(app_data: AppData) -> Result<Self> {
+        app_data.check(Afn::RouteGet, RouteQuery::RunningStatus as u8, 16)?;
+
+        let data_units = app_data.data_units.unwrap();
+
+        Ok(Self {
+            running_status: data_units[0].into(),
+            total_node_number: u16::from_le_bytes([data_units[2], data_units[1]]),
+            meter_node_number: u16::from_le_bytes([data_units[4], data_units[3]]),
+            relay_meter_node_number: u16::from_le_bytes([data_units[6], data_units[5]]),
+            work_status: data_units[7].into(),
+            comm_speed: u16::from_le_bytes([data_units[9], data_units[8]]),
+            relay_level: data_units[10..13].try_into().unwrap(),
+            work_step: data_units[13..16].try_into().unwrap(),
         })
     }
 }

@@ -6,7 +6,7 @@ use crate::protocol::Address;
 use crate::request_info::UartMessage;
 use crate::{ModuleService, Result};
 
-use super::ModuleInfo;
+use super::{MeterState, ModuleInfo};
 
 enum InitEvent {
     Result(Result<()>),
@@ -126,7 +126,7 @@ impl PlcInit {
         unreachable!();
     }
 
-    pub fn run(&self) -> Result<()> {
+    pub fn run(&self, meter_state: MeterState) -> Result<()> {
         self.init_flag.store(false, Ordering::Relaxed);
 
         // 等待模块信息上报
@@ -148,6 +148,7 @@ impl PlcInit {
         self.services
             .node_manage
             .init_clear_acq_files(&self.uart_msg_sender)?;
+        meter_state.init_param();
 
         // 加载档案
         self.services

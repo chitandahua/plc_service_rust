@@ -34,7 +34,7 @@ use uart_agent::{UartAgent, UartHandler};
 mod schema_check;
 
 mod service;
-use service::{DeviceInfo, ModuleInfo, ModuleService, PlcDevice, PlcInit};
+use service::{DeviceInfo, MeterState, ModuleInfo, ModuleService, PlcDevice, PlcInit};
 
 mod uart_handler;
 use uart_handler::{UartMsgHandler, UartTimeoutHandler};
@@ -115,6 +115,7 @@ impl PlcService {
             concurrent_msg_sender.clone(),
             self.module_service.clone(),
             plc_init.clone(),
+            self.module_service.meter_state.clone(),
         );
 
         let consecutive_timeouts = Arc::new(AtomicU8::new(0));
@@ -123,6 +124,7 @@ impl PlcService {
             mqtt_msg_sender.clone(),
             plc_init.clone(),
             consecutive_timeouts.clone(),
+            self.module_service.meter_state.clone(),
         );
         let handler = Handler::new(
             msg_sender,
@@ -149,8 +151,8 @@ impl PlcService {
             .update_address(self.device_info.esn());
         //.update_address("123456789012".to_string());
 
-        plc_init.run()?;
-        //join_handler.push(plc_device.run()?);
+        //plc_init.run(self.module_service.meter_state.clone())?;
+        join_handler.push(plc_device.run()?);
 
         for handler in join_handler {
             handler.join().unwrap();

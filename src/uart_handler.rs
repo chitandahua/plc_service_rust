@@ -8,7 +8,8 @@ use crate::protocol::app_data::{
 };
 use crate::request_info::{MqttReqInfo, ReqInfo};
 use crate::service::{
-    Broadcast, DebugMethod, EventReport, HplcInfo, ModuleService, PlcInit, RouteDataRequest,
+    Broadcast, DebugMethod, EventReport, HplcInfo, MeterState, ModuleService, PlcInit,
+    RouteDataRequest,
 };
 use crate::{ModuleInfo, MqttMessage, MqttPayload};
 use crate::{MqttResponseError, Result, UartHandler, UartMessage};
@@ -19,6 +20,7 @@ pub struct UartMsgHandler {
     concurrent_msg_sender: mpsc::Sender<UartMessage>,
     services: ModuleService,
     plc_init: Arc<PlcInit>,
+    meter_state: MeterState,
 }
 
 impl UartMsgHandler {
@@ -28,6 +30,7 @@ impl UartMsgHandler {
         concurrent_msg_sender: mpsc::Sender<UartMessage>,
         services: ModuleService,
         plc_init: Arc<PlcInit>,
+        meter_state: MeterState,
     ) -> Self {
         Self {
             mqtt_msg_sender,
@@ -35,6 +38,7 @@ impl UartMsgHandler {
             concurrent_msg_sender,
             services,
             plc_init,
+            meter_state,
         }
     }
 
@@ -166,10 +170,12 @@ impl UartMsgHandler {
         let fn_num = DataTransfer::try_from(fn_num)
             .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
         match fn_num {
-            DataTransfer::TransferFrame => self
-                .services
-                .data_transfer
-                .uart_data_transfer_response(message),
+            DataTransfer::TransferFrame => {
+                self.meter_state.receive_message();
+                self.services
+                    .data_transfer
+                    .uart_data_transfer_response(message)
+            }
         }
     }
 
@@ -221,6 +227,10 @@ impl UartMsgHandler {
             RouteQuery::SlaveModuleId => {
                 HplcInfo::uart_slave_module_id_info_response(message, &self.mqtt_msg_sender)
             }
+            RouteQuery::RunningStatus => self
+                .services
+                .meter_state
+                .uart_metering_state_response(message, &self.mqtt_msg_sender),
         }
     }
 
@@ -240,10 +250,12 @@ impl UartMsgHandler {
         let fn_num = DataForward::try_from(fn_num)
             .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
         match fn_num {
-            DataForward::MonitorNode => self
-                .services
-                .monitor_node
-                .uart_get_monitor_node_data(message),
+            DataForward::MonitorNode => {
+                self.meter_state.receive_message();
+                self.services
+                    .monitor_node
+                    .uart_get_monitor_node_data(message)
+            }
         }
     }
 
@@ -254,6 +266,7 @@ impl UartMsgHandler {
         match fn_num {
             MeterReading::ActiveReadMeter => {
                 let master_address = self.services.master_address.get_master_address();
+                self.meter_state.receive_message();
                 self.services.concurrent_meter.uart_meter_reading(
                     message,
                     master_address,

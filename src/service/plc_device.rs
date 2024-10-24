@@ -14,7 +14,7 @@ use tracing::{debug, info, warn};
 
 use crate::mqtt_message::{MqttMessage, MqttPayload, Status};
 use crate::APP_NAME;
-use crate::{PlcInit, Result};
+use crate::{MeterState, PlcInit, Result};
 
 trait State: Send {
     fn execute(&self, device: &PlcDevice) -> Box<dyn State>;
@@ -90,6 +90,7 @@ pub struct PlcDevice {
     online: Arc<AtomicBool>,
     plc_init: Arc<PlcInit>,
     consecutive_timeouts: Arc<AtomicU8>,
+    meter_state: MeterState,
 }
 
 #[derive(Debug, PartialEq, TryFromPrimitive)]
@@ -118,6 +119,7 @@ impl PlcDevice {
         mqtt_msg_sender: mpsc::Sender<MqttMessage>,
         plc_init: Arc<PlcInit>,
         consecutive_timeouts: Arc<AtomicU8>,
+        meter_state: MeterState,
     ) -> Self {
         PlcDevice {
             port,
@@ -125,6 +127,7 @@ impl PlcDevice {
             online: Arc::new(AtomicBool::new(false)),
             plc_init,
             consecutive_timeouts,
+            meter_state,
         }
     }
 
@@ -165,6 +168,7 @@ impl PlcDevice {
             rstw_iocmode(fd, ON)?;
             thread::sleep(Duration::from_millis(2000));
         }
+        self.meter_state.reset_module();
 
         Ok(())
     }
@@ -239,7 +243,7 @@ impl PlcDevice {
             debug!("get module info per {} seconds", CHECK_SECONDS);
             self.plc_init.get_master_address()?;
         } else {
-            self.plc_init.run()?;
+            self.plc_init.run(self.meter_state.clone())?;
         }
 
         Ok(())

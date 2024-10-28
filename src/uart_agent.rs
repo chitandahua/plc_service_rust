@@ -146,8 +146,13 @@ impl UartAgent {
                         // 超时处理
                         let req = lock.req_info.take();
                         if let Some(req) = req {
-                            warn!("request seq {} timeout", req.seq_num());
-                            let _ = uart_timeout_handler.handle_timeout(req);
+                            warn!(
+                                "request {:?} seq {} timeout, ",
+                                req.frame_key().to_tuple(),
+                                req.seq_num(),
+                            );
+                            let _ = uart_timeout_handler
+                                .handle_timeout(req, lock.extra_req_info.take());
                             consecutive_timeouts.fetch_add(1, Ordering::Relaxed);
                         } else {
                             consecutive_timeouts.store(0, Ordering::Relaxed);
@@ -180,7 +185,7 @@ impl UartAgent {
                                 // 若超时 且当前只有mqtt会并行请求 故unwrap
                                 lock.concurrent_req_info.remove(&seq).unwrap().0
                             };
-                            let _ = uart_timeout_handler.handle_timeout(req_info);
+                            let _ = uart_timeout_handler.handle_timeout(req_info, None);
                         }
                     });
                     {

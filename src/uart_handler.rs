@@ -368,7 +368,7 @@ impl UartTimeoutHandler {
             .unwrap();
     }
 
-    pub fn handle_timeout(&self, req_info: ReqInfo) -> Result<()> {
+    pub fn handle_timeout(&self, req_info: ReqInfo, extra_req_info: Option<ReqInfo>) -> Result<()> {
         match req_info.frame_key().to_tuple() {
             (Afn::CocurrentReadMeter, 1) => {
                 let master_address = self.services.master_address.get_master_address();
@@ -387,6 +387,16 @@ impl UartTimeoutHandler {
             }
             (Afn::DataForward, 1) => {
                 self.services.data_transfer.uart_data_transfer_timeout();
+            }
+            (Afn::RouteDataRead, 3) => {
+                if let Some(extra_req_info) = extra_req_info {
+                    match extra_req_info.frame_key().to_tuple() {
+                        (Afn::RouteDataForward, 1) => {
+                            self.services.monitor_node.uart_monitor_node_timeout();
+                        }
+                        _ => unreachable!(),
+                    }
+                }
             }
             _ => match req_info.into_mqtt_req_info() {
                 Some(mqtt_req_info) => self.mqtt_timeout_cb(mqtt_req_info),

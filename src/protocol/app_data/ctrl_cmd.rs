@@ -71,4 +71,16 @@ mod tests {
         };
         assert_eq!(frame.into_app_data(), address_set.into());
     }
+
+    #[test]
+    fn test_broadcast_request() {
+        let frame_str = "682300430000286400990504000212689999999999996808064A33343A3C54EF167916";
+        let frame = tests_common::create_frame_from_hex(frame_str);
+
+        let broadcast = BroadcastRequest::new(
+            0x02,
+            hex::decode("689999999999996808064A33343A3C54EF16").unwrap(),
+        );
+        assert_eq!(frame.into_app_data(), broadcast.into());
+    }
 }

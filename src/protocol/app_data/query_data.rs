@@ -42,6 +42,7 @@ impl From<BroadcastDelayRequest> for AppData {
 }
 
 const PREFIX_LEN: usize = 4;
+#[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub struct BroadcastDelayResponse {
     pub delay: u16,
@@ -354,5 +355,34 @@ mod tests {
             master_id_info_response.module_id,
             hex::decode("0000000000000000000000").unwrap()
         );
+    }
+
+    #[test]
+    fn test_broadcast_delay_request() {
+        let frame_str = "682300430000286400960301010212689999999999996808064a33343a3c54ef167216";
+        let frame = tests_common::create_frame_from_hex(frame_str);
+
+        let broadcast_delay_request = BroadcastDelayRequest {
+            protocol_type: 0x02,
+            message: tests_common::hex_to_bytes("689999999999996808064a33343a3c54ef16"),
+        };
+
+        assert_eq!(frame.into_app_data(), broadcast_delay_request.into());
+    }
+
+    #[test]
+    fn test_broadcast_delay_response() {
+        let frame_str =
+            "6825008300000000009603010101000212689999999999996808064a33343a3c54ef162716";
+        let frame = tests_common::create_frame_from_hex(frame_str);
+        let broadcast_delay_response = BroadcastDelayResponse {
+            delay: 1,
+            protocol_type: 0x02,
+            message_len: 0x12,
+            message: tests_common::hex_to_bytes("689999999999996808064a33343a3c54ef16"),
+        };
+
+        let response: BroadcastDelayResponse = frame.into_app_data().try_into().unwrap();
+        assert_eq!(response, broadcast_delay_response);
     }
 }

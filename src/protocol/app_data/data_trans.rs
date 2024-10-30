@@ -72,3 +72,36 @@ impl TryFrom<AppData> for TransferFrameResponse {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::app_data::*;
+
+    #[test]
+    fn test_data_transfer_request() {
+        let frame_str = "682d004304000000000677206419826301000000000002010001106801000000000068110435343433b616dd16";
+        let frame = tests_common::create_frame_from_hex(frame_str);
+
+        let data_transfer_request = TransferFrameRequest {
+            protocol_type: 0x01,
+            message: tests_common::hex_to_bytes("6801000000000068110435343433b616"),
+        };
+
+        assert_eq!(frame.into_app_data(), data_transfer_request.into());
+    }
+
+    #[test]
+    fn test_data_transfer_response() {
+        let frame_str = "681f0083000000000006020100020e6812345678901268010243c3ac16ed16";
+        let frame = tests_common::create_frame_from_hex(frame_str);
+        let data_transfer_response = TransferFrameResponse {
+            protocol_type: 0x02,
+            message_len: 0x0e,
+            message: tests_common::hex_to_bytes("6812345678901268010243c3ac16"),
+        };
+
+        let response: TransferFrameResponse = frame.into_app_data().try_into().unwrap();
+        assert_eq!(response, data_transfer_response);
+    }
+}

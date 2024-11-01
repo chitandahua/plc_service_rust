@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "data transfer",
+  "properties": {
+    "token": {
+      "description": "token",
+      "type": "string"
+    },
+    "timestamp": {
+      "description": "timestamp",
+      "type": "string"
+    },
+    "prio": {
+      "description": "prio",
+      "type": "string"
+    },
+    "acqAddr": {
+      "description": "acqAddr",
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 12
+    },
+    "proType": {
+      "description": "proType",
+      "type": "number",
+      "enum": [0, 1, 2, 3]
+    },
+    "frameTimeout": {
+      "description": "frameTimeout",
+      "type": "number",
+      "minimum": 1,
+      "maximum": 300
+    },
+    "charTimeout": {
+      "description": "charTimeout",
+      "type": "number",
+      "minimum": 1,
+      "maximum": 6000
+    },
+    "data": {
+      "description": "data",
+      "type": "string",
+      "pattern": "^([0-9A-Fa-f]{2})+$"
+    }
+  },
+  "required": [
+    "token",
+    "timestamp",
+    "prio",
+    "acqAddr",
+    "proType",
+    "frameTimeout",
+    "charTimeout",
+    "data"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "meter config",
+  "properties": {
+    "init_timeout": {
+      "description": "init timeout(s)",
+      "type": "integer",
+      "minimum": 1
+    },
+    "uart_timeout": {
+      "description": "uart timeout(ms)",
+      "type": "integer",
+      "minimum": 100
+    },
+    "concurrent": {
+      "description": "concurrent",
+      "type": "object",
+      "properties": {
+        "concurrency_limit": {
+          "description": "concurrency limit",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "timeout": {
+          "description": "timeout(s)",
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": ["concurrency_limit", "timeout"]
+    },
+    "meter_reading": {
+      "description": "meter reading",
+      "type": "object",
+      "properties": {
+        "cache_queue_size": {
+          "description": "cache queue size",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "concurrent_addr": {
+          "description": "concurrent addr",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "queue_aging_time": {
+          "description": "queue aging time(min)",
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": ["cache_queue_size", "concurrent_addr", "queue_aging_time"]
+    },
+    "resume_interval": {
+      "description": "resume interval(s)",
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "init_timeout",
+    "uart_timeout",
+    "concurrent",
+    "meter_reading",
+    "resume_interval"
+  ],
+  "type": "object"
+}

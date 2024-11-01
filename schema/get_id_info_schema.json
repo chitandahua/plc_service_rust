@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "query node num",
+  "properties": {
+    "token": {
+      "description": "token",
+      "type": "string"
+    },
+    "timestamp": {
+      "description": "timestamp",
+      "type": "string"
+    },
+    "prio": {
+      "description": "prio",
+      "type": "string"
+    },
+    "deviceType": {
+      "description": "deviceType",
+      "type": "integer",
+      "enum": [1, 2, 3, 4, 5, 6, 7]
+    },
+    "nodeAddr": {
+      "description": "nodeAddr",
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 12
+    },
+    "idType": {
+      "description": "idType",
+      "type": "integer",
+      "enum": [1, 2]
+    }
+  },
+  "required": [
+    "token",
+    "timestamp",
+    "prio",
+    "deviceType",
+    "nodeAddr",
+    "idType"
+  ],
+  "type": "object"
+}

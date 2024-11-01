@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "com setting",
+  "properties": {
+    "baudrate": {
+      "description": "baudrate",
+      "type": "integer",
+      "enum": [2400, 4800, 9600, 115200]
+    },
+    "parity": {
+      "description": "parity",
+      "type": "string",
+      "enum": ["N", "E", "O", "n", "e", "o"]
+    },
+    "port": {
+      "description": "port",
+      "type": "string"
+    },
+    "stopbit": {
+      "description": "stopbit",
+      "type": "integer",
+      "enum": [1, 2]
+    },
+    "wordlength": {
+      "description": "wordlength",
+      "type": "integer",
+      "enum": [7, 8]
+    }
+  },
+  "required": ["baudrate", "parity", "port", "stopbit", "wordlength"],
+  "type": "object"
+}

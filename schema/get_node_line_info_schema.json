@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "query node line info",
+  "properties": {
+    "token": {
+      "description": "token",
+      "type": "string"
+    },
+    "timestamp": {
+      "description": "timestamp",
+      "type": "string"
+    },
+    "prio": {
+      "description": "prio",
+      "type": "string"
+    },
+    "startIndex": {
+      "description": "startIndex",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "nodeNumber": {
+      "description": "nodeNumber",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64
+    }
+  },
+  "required": ["token", "timestamp", "prio", "startIndex", "nodeNumber"],
+  "type": "object"
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "broadcast delay",
+  "properties": {
+    "token": {
+      "description": "token",
+      "type": "string"
+    },
+    "timestamp": {
+      "description": "timestamp",
+      "type": "string"
+    },
+    "prio": {
+      "description": "prio",
+      "type": "string"
+    },
+    "proType": {
+      "description": "proType",
+      "type": "number",
+      "enum": [0, 1, 2, 3]
+    },
+    "data": {
+      "description": "data",
+      "type": "string",
+      "pattern": "^([0-9A-Fa-f]{2})+$"
+    }
+  },
+  "required": ["token", "timestamp", "prio", "proType", "data"],
+  "type": "object"
+}

@@ -1,0 +1,36 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "query node num",
+    "properties": {
+        "token": {
+            "description": "token",
+            "type": "string"
+        },
+        "timestamp": {
+            "description": "timestamp",
+            "type": "string"
+        },
+        "prio": {
+            "description": "prio",
+            "type": "string"
+        },
+        "startIndex": {
+            "description": "startIndex",
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "curMeterNum": {
+            "description": "curMeterNum",
+            "type": "string",
+            "pattern": "^([1-9][0-9]*)$"
+        }
+    },
+    "required": [
+        "token",
+        "timestamp",
+        "prio",
+        "startIndex",
+        "curMeterNum"
+    ],
+    "type": "object"
+}

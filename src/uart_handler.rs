@@ -8,8 +8,8 @@ use crate::protocol::app_data::{
 };
 use crate::request_info::{MqttReqInfo, ReqInfo};
 use crate::service::{
-    Broadcast, DebugMethod, EventReport, HplcInfo, MeterState, ModuleService, PlcInit,
-    RouteDataRequest,
+    Broadcast, DebugMethod, EventReport, HplcInfo, IdentifyArea, MeterState, ModuleService,
+    PlcInit, RouteDataRequest,
 };
 use crate::{ModuleInfo, MqttMessage, MqttPayload};
 use crate::{MqttResponseError, Result, UartHandler, UartMessage};
@@ -68,6 +68,23 @@ impl UartMsgHandler {
                 &self.uart_msg_sender,
                 &self.mqtt_msg_sender,
             ),
+            ActiveReport::NodeInfo => self.services.identify_area.uart_slave_node_info_report(
+                message,
+                &self.mqtt_msg_sender,
+                &self.uart_msg_sender,
+            ),
+            ActiveReport::NodeInfoAndDeviceType => self
+                .services
+                .identify_area
+                .uart_slave_node_info_and_device_report(
+                    message,
+                    &self.mqtt_msg_sender,
+                    &self.uart_msg_sender,
+                ),
+            ActiveReport::WorkStatus => self
+                .services
+                .identify_area
+                .uart_slave_work_status_report(message, &self.uart_msg_sender),
         }
     }
 
@@ -108,41 +125,55 @@ impl UartMsgHandler {
                 _ => unreachable!(),
             }
         } else {
-            let result = match afn {
+            match afn {
                 Afn::CtrlCmd => {
                     let fn_num = CtrlCmd::try_from(fn_num).expect(init_err_msg);
-                    match fn_num {
+                    let result = match fn_num {
                         CtrlCmd::SetAddress => self
                             .services
                             .master_address
                             .init_set_address_response(message),
                         _ => unreachable!(),
-                    }
+                    };
+                    self.plc_init.notify(result);
                 }
                 Afn::RouteSet => {
                     let fn_num = RouteSet::try_from(fn_num).expect(init_err_msg);
-                    match fn_num {
+                    let result = match fn_num {
                         RouteSet::AddNode => self.services.node_manage.uart_add_acq_files(message),
                         _ => unreachable!(),
-                    }
+                    };
+                    self.plc_init.notify(result);
                 }
                 Afn::Init => {
                     let fn_num = InitOperation::try_from(fn_num).expect(init_err_msg);
-                    match fn_num {
+                    let result = match fn_num {
                         InitOperation::Params => {
                             self.services.node_manage.uart_clear_acq_files(message)
                         }
                         _ => unreachable!(),
+                    };
+                    self.plc_init.notify(result);
+                }
+                // 内部操作 非初始化
+                Afn::RouteCtrl => {
+                    // 内部自动操作路由控制
+                    let _ = MeterControl::try_from(fn_num).expect("invalid route ctrl fn");
+                    self.services.route_ctrl.uart_operate_metering(message)?;
+                }
+                Afn::RouteGet => {
+                    // 内部搜表时 查询运行状态 工作标志 搜表是否结束
+                    let fn_num = RouteQuery::try_from(fn_num).expect("invalid route get fn");
+                    match fn_num {
+                        RouteQuery::RunningStatus => self
+                            .services
+                            .identify_area
+                            .uart_search_meter_running_status(message)?,
+                        _ => unreachable!(),
                     }
                 }
-                // 内部操作
-                Afn::RouteCtrl => {
-                    let _ = MeterControl::try_from(fn_num).expect("invalid route ctrl fn");
-                    self.services.route_ctrl.uart_operate_metering(message)
-                }
                 _ => unreachable!(),
-            };
-            self.plc_init.notify(result);
+            }
         }
 
         Ok(())
@@ -199,6 +230,9 @@ impl UartMsgHandler {
                     &self.uart_msg_sender,
                 )?;
             }
+            CtrlCmd::IdentifyArea => {
+                IdentifyArea::uart_identify_area_set(message, &self.mqtt_msg_sender)?;
+            }
         }
         Ok(())
     }
@@ -210,6 +244,13 @@ impl UartMsgHandler {
         match fn_num {
             RouteSet::AddNode => self.services.node_manage.uart_add_acq_files(message)?,
             RouteSet::DelNode => self.services.node_manage.uart_del_acq_files(message)?,
+            RouteSet::ActiveNodeRegister => self
+                .services
+                .identify_area
+                .uart_active_slave_node_register(message)?,
+            RouteSet::StopNodeRegister => {
+                IdentifyArea::uart_stop_slave_node_register(message, &self.mqtt_msg_sender)?;
+            }
         }
         Ok(())
     }
@@ -379,7 +420,7 @@ impl UartTimeoutHandler {
                     &self.mqtt_msg_sender,
                 )?;
             }
-            (Afn::RouteSet, _) => {
+            (Afn::RouteSet, 1) | (Afn::RouteSet, 2) => {
                 self.services.node_manage.uart_operate_acq_files_timeout();
             }
             (Afn::RouteDataForward, 1) => {
@@ -397,6 +438,16 @@ impl UartTimeoutHandler {
                         _ => unreachable!(),
                     }
                 }
+            }
+            (Afn::RouteSet, 5) => {
+                self.services
+                    .identify_area
+                    .uart_active_slave_node_register_timeout();
+            }
+            (Afn::RouteGet, 4) if req_info.is_init() => {
+                self.services
+                    .identify_area
+                    .uart_active_slave_node_register_timeout();
             }
             _ => match req_info.into_mqtt_req_info() {
                 Some(mqtt_req_info) => self.mqtt_timeout_cb(mqtt_req_info),

@@ -1,5 +1,7 @@
 use crate::mqtt_message::Status;
-use crate::service::{Broadcast, DebugMethod, HplcInfo, MasterAddress, ModuleInfo, ModuleService};
+use crate::service::{
+    Broadcast, DebugMethod, HplcInfo, IdentifyArea, MasterAddress, ModuleInfo, ModuleService,
+};
 use crate::{schema_check, MqttHandler, MqttResponseError, PlcDevice, Result};
 use crate::{MqttMessage, UartMessage};
 
@@ -121,6 +123,11 @@ pub enum MqttTopicType {
     DataTransfer,
     // 抄表状态
     MeteringState,
+    // 台区识别
+    IdentifyArea,
+    // 台区搜表
+    EnableSearchMeter,
+    DisableSearchMeter,
 }
 
 struct MqttTopicFilter {
@@ -204,174 +211,190 @@ impl MqttMsgHandler {
             }
         });
 
-        let handle =
-            thread::spawn(move || loop {
-                let priority_message = priority_queue.pop();
-                debug!("priority message: {:?}", priority_message);
-                let message = priority_message.message;
+        let handle = thread::spawn(move || loop {
+            let priority_message = priority_queue.pop();
+            debug!("priority message: {:?}", priority_message);
+            let message = priority_message.message;
 
-                let topic = message.topic();
-                let sub_topic = topic_filters
-                    .iter()
-                    .find(|&topic_filter| topic_filter.filter.matches(topic));
+            let topic = message.topic();
+            let sub_topic = topic_filters
+                .iter()
+                .find(|&topic_filter| topic_filter.filter.matches(topic));
 
-                if let Some(sub_topic) = sub_topic {
-                    let result =
-                        match sub_topic.mqtt_topic_type {
-                            MqttTopicType::GetModuleInfo => {
-                                ModuleInfo::mqtt_get_module_info(message, &uart_msg_sender);
-                                Ok(())
-                            }
-                            MqttTopicType::GetMasterIdInfo => {
-                                ModuleInfo::mqtt_get_master_id_info(message, &uart_msg_sender);
-                                Ok(())
-                            }
-                            MqttTopicType::GetMasterAddress => services
-                                .master_address
-                                .mqtt_get_address(message, &mqtt_msg_sender),
-                            MqttTopicType::SetMasterAddress => {
-                                MasterAddress::mqtt_set_address(message, &uart_msg_sender)
-                            }
-                            MqttTopicType::AddAcqFiles => services.node_manage.mqtt_add_acq_files(
+            if let Some(sub_topic) = sub_topic {
+                let result =
+                    match sub_topic.mqtt_topic_type {
+                        MqttTopicType::GetModuleInfo => {
+                            ModuleInfo::mqtt_get_module_info(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::GetMasterIdInfo => {
+                            ModuleInfo::mqtt_get_master_id_info(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::GetMasterAddress => services
+                            .master_address
+                            .mqtt_get_address(message, &mqtt_msg_sender),
+                        MqttTopicType::SetMasterAddress => {
+                            MasterAddress::mqtt_set_address(message, &uart_msg_sender)
+                        }
+                        MqttTopicType::AddAcqFiles => services.node_manage.mqtt_add_acq_files(
+                            message,
+                            &mqtt_msg_sender,
+                            &uart_msg_sender,
+                        ),
+                        MqttTopicType::DelAcqFiles => services.node_manage.mqtt_del_acq_files(
+                            message,
+                            &mqtt_msg_sender,
+                            &uart_msg_sender,
+                        ),
+                        MqttTopicType::ClearAcqFiles => services.node_manage.mqtt_clear_acq_files(
+                            message,
+                            &mqtt_msg_sender,
+                            &uart_msg_sender,
+                        ),
+                        MqttTopicType::GetAcqFiles => services.node_manage.mqtt_get_acq_files(
+                            message,
+                            &mqtt_msg_sender,
+                            &uart_msg_sender,
+                        ),
+                        MqttTopicType::GetAcqFilesNum => services
+                            .node_manage
+                            .mqtt_get_acq_files_number(message, &mqtt_msg_sender, &uart_msg_sender),
+                        MqttTopicType::ConcurrentMeter => {
+                            let master_address = services.master_address.get_master_address();
+                            services.concurrent_meter.mqtt_concurrent_meter_reading(
+                                message,
+                                master_address,
+                                &mqtt_msg_sender,
+                                &concurrent_msg_sender,
+                            )
+                        }
+                        MqttTopicType::GetChipInfo => {
+                            HplcInfo::mqtt_get_chip_info(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::GetNodeLineInfo => {
+                            HplcInfo::mqtt_get_node_line_info(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::GetIdInfo => {
+                            HplcInfo::mqtt_get_id_info(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::GetSlaveModuleId => {
+                            HplcInfo::mqtt_get_slave_module_id_info(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::SendDebugFrame => {
+                            DebugMethod::mqtt_debug_frame_request(message, &uart_msg_sender)
+                        }
+                        MqttTopicType::DeviceInfo => {
+                            services.device_info.mqtt_device_info_response(message);
+                            Ok(())
+                        }
+                        MqttTopicType::MonitorNode => {
+                            let master_address = services.master_address.get_master_address();
+                            let result = services.monitor_node.mqtt_get_monitor_node_data(
+                                master_address.clone(),
+                                &services.route_ctrl,
                                 message,
                                 &mqtt_msg_sender,
                                 &uart_msg_sender,
-                            ),
-                            MqttTopicType::DelAcqFiles => services.node_manage.mqtt_del_acq_files(
+                            );
+                            services
+                                .concurrent_meter
+                                .handle_cache_request(master_address, &concurrent_msg_sender);
+                            result
+                        }
+                        MqttTopicType::MonitorNodeDelay => {
+                            let master_address = services.master_address.get_master_address();
+                            let result = services.monitor_node.mqtt_get_monitor_node_delay(
+                                master_address.clone(),
+                                &services.route_ctrl,
                                 message,
                                 &mqtt_msg_sender,
                                 &uart_msg_sender,
-                            ),
-                            MqttTopicType::ClearAcqFiles => services
-                                .node_manage
-                                .mqtt_clear_acq_files(message, &mqtt_msg_sender, &uart_msg_sender),
-                            MqttTopicType::GetAcqFiles => services.node_manage.mqtt_get_acq_files(
+                            );
+                            services
+                                .concurrent_meter
+                                .handle_cache_request(master_address, &concurrent_msg_sender);
+                            result
+                        }
+                        MqttTopicType::PauseMetering => services.route_ctrl.mqtt_pause_metering(
+                            message,
+                            &mqtt_msg_sender,
+                            &uart_msg_sender,
+                        ),
+                        MqttTopicType::RestartMetering => services
+                            .route_ctrl
+                            .mqtt_restart_metering(message, &mqtt_msg_sender, &uart_msg_sender),
+                        MqttTopicType::ResumeMetering => services.route_ctrl.mqtt_resume_metering(
+                            message,
+                            &mqtt_msg_sender,
+                            &uart_msg_sender,
+                        ),
+                        MqttTopicType::BroadcastCmd => {
+                            Broadcast::mqtt_broadcast_cmd(
+                                &services.route_ctrl,
                                 message,
                                 &mqtt_msg_sender,
                                 &uart_msg_sender,
-                            ),
-                            MqttTopicType::GetAcqFilesNum => {
-                                services.node_manage.mqtt_get_acq_files_number(
-                                    message,
-                                    &mqtt_msg_sender,
-                                    &uart_msg_sender,
-                                )
-                            }
-                            MqttTopicType::ConcurrentMeter => {
-                                let master_address = services.master_address.get_master_address();
-                                services.concurrent_meter.mqtt_concurrent_meter_reading(
-                                    message,
-                                    master_address,
-                                    &mqtt_msg_sender,
-                                    &concurrent_msg_sender,
-                                )
-                            }
-                            MqttTopicType::GetChipInfo => {
-                                HplcInfo::mqtt_get_chip_info(message, &uart_msg_sender);
-                                Ok(())
-                            }
-                            MqttTopicType::GetNodeLineInfo => {
-                                HplcInfo::mqtt_get_node_line_info(message, &uart_msg_sender);
-                                Ok(())
-                            }
-                            MqttTopicType::GetIdInfo => {
-                                HplcInfo::mqtt_get_id_info(message, &uart_msg_sender);
-                                Ok(())
-                            }
-                            MqttTopicType::GetSlaveModuleId => {
-                                HplcInfo::mqtt_get_slave_module_id_info(message, &uart_msg_sender);
-                                Ok(())
-                            }
-                            MqttTopicType::SendDebugFrame => {
-                                DebugMethod::mqtt_debug_frame_request(message, &uart_msg_sender)
-                            }
-                            MqttTopicType::DeviceInfo => {
-                                services.device_info.mqtt_device_info_response(message);
-                                Ok(())
-                            }
-                            MqttTopicType::MonitorNode => {
-                                let master_address = services.master_address.get_master_address();
-                                let result = services.monitor_node.mqtt_get_monitor_node_data(
-                                    master_address.clone(),
-                                    &services.route_ctrl,
-                                    message,
-                                    &mqtt_msg_sender,
-                                    &uart_msg_sender,
-                                );
-                                services
-                                    .concurrent_meter
-                                    .handle_cache_request(master_address, &concurrent_msg_sender);
-                                result
-                            }
-                            MqttTopicType::MonitorNodeDelay => {
-                                let master_address = services.master_address.get_master_address();
-                                let result = services.monitor_node.mqtt_get_monitor_node_delay(
-                                    master_address.clone(),
-                                    &services.route_ctrl,
-                                    message,
-                                    &mqtt_msg_sender,
-                                    &uart_msg_sender,
-                                );
-                                services
-                                    .concurrent_meter
-                                    .handle_cache_request(master_address, &concurrent_msg_sender);
-                                result
-                            }
-                            MqttTopicType::PauseMetering => services
-                                .route_ctrl
-                                .mqtt_pause_metering(message, &mqtt_msg_sender, &uart_msg_sender),
-                            MqttTopicType::RestartMetering => services
-                                .route_ctrl
-                                .mqtt_restart_metering(message, &mqtt_msg_sender, &uart_msg_sender),
-                            MqttTopicType::ResumeMetering => services
-                                .route_ctrl
-                                .mqtt_resume_metering(message, &mqtt_msg_sender, &uart_msg_sender),
-                            MqttTopicType::BroadcastCmd => {
-                                Broadcast::mqtt_broadcast_cmd(
-                                    &services.route_ctrl,
-                                    message,
-                                    &mqtt_msg_sender,
-                                    &uart_msg_sender,
-                                );
-                                Ok(())
-                            }
-                            MqttTopicType::BroadcastDelay => {
-                                Broadcast::mqtt_get_broadcast_delay(
-                                    &services.route_ctrl,
-                                    message,
-                                    &mqtt_msg_sender,
-                                    &uart_msg_sender,
-                                );
-                                Ok(())
-                            }
-                            MqttTopicType::DataTransfer => {
-                                let master_address = services.master_address.get_master_address();
-                                let result = services.data_transfer.mqtt_data_transfer(
-                                    master_address.clone(),
-                                    message,
-                                    &mqtt_msg_sender,
-                                    &uart_msg_sender,
-                                );
-                                services
-                                    .concurrent_meter
-                                    .handle_cache_request(master_address, &concurrent_msg_sender);
-                                result
-                            }
-                            MqttTopicType::MeteringState => {
-                                services
-                                    .meter_state
-                                    .mqtt_get_metering_state(message, &uart_msg_sender);
-                                Ok(())
-                            }
-                        };
+                            );
+                            Ok(())
+                        }
+                        MqttTopicType::BroadcastDelay => {
+                            Broadcast::mqtt_get_broadcast_delay(
+                                &services.route_ctrl,
+                                message,
+                                &mqtt_msg_sender,
+                                &uart_msg_sender,
+                            );
+                            Ok(())
+                        }
+                        MqttTopicType::DataTransfer => {
+                            let master_address = services.master_address.get_master_address();
+                            let result = services.data_transfer.mqtt_data_transfer(
+                                master_address.clone(),
+                                message,
+                                &mqtt_msg_sender,
+                                &uart_msg_sender,
+                            );
+                            services
+                                .concurrent_meter
+                                .handle_cache_request(master_address, &concurrent_msg_sender);
+                            result
+                        }
+                        MqttTopicType::MeteringState => {
+                            services
+                                .meter_state
+                                .mqtt_get_metering_state(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::IdentifyArea => {
+                            IdentifyArea::mqtt_identify_area_set(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::EnableSearchMeter => {
+                            services.identify_area.mqtt_active_slave_node_register(
+                                message,
+                                &mqtt_msg_sender,
+                                &uart_msg_sender,
+                            )
+                        }
+                        MqttTopicType::DisableSearchMeter => {
+                            IdentifyArea::mqtt_stop_slave_node_register(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                    };
 
-                    if let Err(e) = result {
-                        error!("mqtt msg handler error: {}", e);
-                    }
-                } else {
-                    warn!("unrecognized topic: {}", topic);
+                if let Err(e) = result {
+                    error!("mqtt msg handler error: {}", e);
                 }
-            });
+            } else {
+                warn!("unrecognized topic: {}", topic);
+            }
+        });
 
         Ok(vec![handle, msg_handle])
     }

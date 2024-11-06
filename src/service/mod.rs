@@ -19,6 +19,9 @@ pub use event_report::EventReport;
 mod hplc_info;
 pub use hplc_info::HplcInfo;
 
+mod identify_area;
+pub use identify_area::IdentifyArea;
+
 mod meter_state;
 pub use meter_state::MeterState;
 
@@ -70,6 +73,7 @@ pub struct ModuleService {
     pub route_ctrl: RouteCtrl,
     pub data_transfer: DataTransfer,
     pub meter_state: MeterState,
+    pub identify_area: IdentifyArea,
 }
 
 impl ModuleService {
@@ -92,6 +96,7 @@ impl ModuleService {
             route_ctrl: RouteCtrl::new(timer, meter_config.resume_interval),
             data_transfer: DataTransfer::new(metering_state.clone()),
             meter_state: MeterState::new(),
+            identify_area: IdentifyArea::new(),
         })
     }
 
@@ -108,6 +113,7 @@ impl ModuleService {
         Broadcast::init(mqtt_msg_handler);
         DataTransfer::init(mqtt_msg_handler);
         MeterState::init(mqtt_msg_handler);
+        IdentifyArea::init(mqtt_msg_handler);
     }
 }
 

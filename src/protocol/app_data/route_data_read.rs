@@ -2,6 +2,7 @@ use chrono::{Datelike, Local, Timelike};
 use num_enum::TryFromPrimitive;
 
 use crate::protocol::app_data::{Afn, AppDataError};
+use crate::protocol::user_data::dec_to_hex;
 use crate::protocol::{Address, AppData};
 use crate::Result;
 
@@ -14,10 +15,6 @@ pub enum RouteDataRead {
 }
 
 pub struct ClockDataResponse;
-
-fn dec_to_hex(value: u8) -> u8 {
-    ((value / 10) % 10) * 16 + (value % 10)
-}
 
 impl From<ClockDataResponse> for AppData {
     fn from(_: ClockDataResponse) -> Self {

@@ -6,13 +6,15 @@ use std::fmt::{Display, Formatter};
 use thiserror::Error;
 
 mod active_report;
-pub use active_report::{ActiveReport, SlaveNodeEvent};
+pub use active_report::{
+    ActiveReport, ReportNodeInfoAndDeviceType, ReportWorkStatus, SlaveNodeEvent, WorkStatusType,
+};
 
 mod answer;
 pub use answer::{AnswerFn, ConfirmResponse, DenyResponse};
 
 mod ctrl_cmd;
-pub use ctrl_cmd::{AddressSetRequest, BroadcastRequest, CtrlCmd};
+pub use ctrl_cmd::{AddressSetRequest, BroadcastRequest, CtrlCmd, IdentifyAreaSetRequest};
 
 mod data_trans;
 pub use data_trans::{DataTransfer, TransferFrameRequest, TransferFrameResponse};
@@ -47,7 +49,10 @@ pub use route_get::{
 };
 
 mod route_set;
-pub use route_set::{AddNodeRequest, DelNodeRequest, NodeInfo, RouteSet};
+pub use route_set::{
+    ActiveNodeRegisterRequest, AddNodeRequest, DelNodeRequest, NodeInfo, RouteSet,
+    StopNodeRegisterRequest,
+};
 
 pub const ADDR_LEN: usize = 6;
 #[derive(Debug, Clone, PartialEq, Default)]

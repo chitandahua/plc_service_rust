@@ -13,6 +13,10 @@ pub fn hex_to_dec(bcd: u8) -> u8 {
     (bcd >> 4) * 10 + (bcd & 0x0f)
 }
 
+pub fn dec_to_hex(value: u8) -> u8 {
+    ((value / 10) % 10) * 16 + (value % 10)
+}
+
 #[derive(Debug, Clone)]
 pub struct AddressField {
     pub(crate) src_address: Address,

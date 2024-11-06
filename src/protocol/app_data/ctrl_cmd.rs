@@ -9,6 +9,7 @@ use crate::protocol::AppData;
 pub enum CtrlCmd {
     SetAddress = 1,
     Broadcast = 3,
+    IdentifyArea = 6,
 }
 
 pub struct BroadcastRequest {
@@ -51,6 +52,26 @@ impl From<AddressSetRequest> for AppData {
             Afn::CtrlCmd,
             CtrlCmd::SetAddress as u8,
             Some(address_set_request.address.into()),
+        )
+    }
+}
+
+pub struct IdentifyAreaSetRequest {
+    enable_flag: u8,
+}
+
+impl IdentifyAreaSetRequest {
+    pub fn new(enable_flag: u8) -> Self {
+        Self { enable_flag }
+    }
+}
+
+impl From<IdentifyAreaSetRequest> for AppData {
+    fn from(value: IdentifyAreaSetRequest) -> Self {
+        AppData::new(
+            Afn::CtrlCmd,
+            CtrlCmd::IdentifyArea as u8,
+            Some(vec![value.enable_flag]),
         )
     }
 }

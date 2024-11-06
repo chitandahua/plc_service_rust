@@ -83,6 +83,7 @@ impl RouteCtrl {
                 let uart_msg_sender = uart_msg_sender.clone();
                 move || {
                     tracing::debug!("auto resume metering...");
+                    // resume可能会阻塞而影响其他timer? 最好将resume timer放单独线程中... TODO
                     let res = route_ctrl.auto_resume_metering(&uart_msg_sender);
                     if let Err(e) = res {
                         tracing::error!(cause = ?e, "resume metering failed");
@@ -175,9 +176,9 @@ impl RouteCtrl {
 
         if result.is_ok() {
             Self::update_metering_state(state.deref_mut(), meter_state);
+            state.resume_timer = None;
         }
 
-        state.resume_timer = None;
         mqtt_msg_sender
             .send(mqtt_response_message(result, message.to_mqtt_req_info()))
             .unwrap();

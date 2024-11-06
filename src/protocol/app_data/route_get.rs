@@ -505,7 +505,7 @@ pub struct WorkStatus {
     area_identify_status: u8,
     report_event_flag: u8,
     register_permit: u8,
-    work_status: u8,
+    pub work_status: u8,
 }
 
 impl From<u8> for WorkStatus {
@@ -526,7 +526,7 @@ pub struct RunningStatusResponse {
     total_node_number: u16,
     meter_node_number: u16,
     relay_meter_node_number: u16,
-    work_status: WorkStatus,
+    pub work_status: WorkStatus,
     comm_speed: u16,
     relay_level: [u8; 3],
     work_step: [u8; 3],

@@ -1,7 +1,10 @@
+use crate::protocol::user_data::dec_to_hex;
 use num_enum::TryFromPrimitive;
 
 use crate::protocol::app_data::{Address, Afn};
 use crate::protocol::AppData;
+
+use chrono::{Datelike, Timelike};
 
 // AFN 11H
 #[derive(Debug, TryFromPrimitive)]
@@ -9,6 +12,8 @@ use crate::protocol::AppData;
 pub enum RouteSet {
     AddNode = 1,
     DelNode = 2,
+    ActiveNodeRegister = 5,
+    StopNodeRegister = 6,
 }
 
 #[derive(Debug, PartialEq)]
@@ -68,6 +73,60 @@ impl From<DelNodeRequest> for AppData {
             data.extend(addr);
         }
         AppData::new(Afn::RouteSet, RouteSet::DelNode as u8, Some(data))
+    }
+}
+
+pub struct ActiveNodeRegisterRequest {
+    start_time: chrono::NaiveDateTime,
+    // 持续时间
+    duration: u16,
+    retry_count: u8,
+    // 随机等待时间片个数
+    random_wait_count: u8,
+}
+
+impl ActiveNodeRegisterRequest {
+    pub fn new(
+        start_time: chrono::NaiveDateTime,
+        duration: u16,
+        retry_count: u8,
+        random_wait_count: u8,
+    ) -> Self {
+        Self {
+            start_time,
+            duration,
+            retry_count,
+            random_wait_count,
+        }
+    }
+}
+
+impl From<ActiveNodeRegisterRequest> for AppData {
+    fn from(request: ActiveNodeRegisterRequest) -> Self {
+        let mut data = Vec::new();
+        data.push(dec_to_hex(request.start_time.second() as u8));
+        data.push(dec_to_hex(request.start_time.minute() as u8));
+        data.push(dec_to_hex(request.start_time.hour() as u8));
+        data.push(dec_to_hex(request.start_time.day() as u8));
+        data.push(dec_to_hex(request.start_time.month() as u8));
+        data.push(dec_to_hex((request.start_time.year() % 100) as u8));
+
+        data.extend(request.duration.to_le_bytes());
+        data.push(request.retry_count);
+        data.push(request.random_wait_count);
+        AppData::new(
+            Afn::RouteSet,
+            RouteSet::ActiveNodeRegister as u8,
+            Some(data),
+        )
+    }
+}
+
+pub struct StopNodeRegisterRequest;
+
+impl From<StopNodeRegisterRequest> for AppData {
+    fn from(_: StopNodeRegisterRequest) -> Self {
+        AppData::new(Afn::RouteSet, RouteSet::StopNodeRegister as u8, None)
     }
 }
 

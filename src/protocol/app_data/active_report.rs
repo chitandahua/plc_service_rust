@@ -2,7 +2,7 @@ use num_enum::TryFromPrimitive;
 
 use anyhow::ensure;
 
-use crate::protocol::app_data::{Afn, AppDataError};
+use crate::protocol::app_data::{Address, Afn, AppDataError};
 use crate::protocol::AppData;
 use crate::Result;
 
@@ -10,7 +10,153 @@ use crate::Result;
 #[derive(Debug, TryFromPrimitive)]
 #[repr(u8)]
 pub enum ActiveReport {
+    // 从节点信息
+    NodeInfo = 1,
+    // 工况变动
+    WorkStatus = 3,
+    // 从节点信息及设备类型
+    NodeInfoAndDeviceType = 4,
     SlaveNodeEvent = 5,
+}
+
+const NODE_INFO_SIZE: usize = 9;
+#[allow(dead_code)]
+pub struct ReportNodeInfoDetail {
+    pub address: Address,
+    pub protocol_type: u8,
+    pub seq_num: u16,
+}
+
+impl From<&[u8]> for ReportNodeInfoDetail {
+    fn from(data: &[u8]) -> Self {
+        Self {
+            address: data[0..6].try_into().unwrap(),
+            protocol_type: data[6],
+            seq_num: u16::from_le_bytes(data[7..9].try_into().unwrap()),
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub struct ReportNodeInfo {
+    pub node_number: u8,
+    pub node_info_details: Vec<ReportNodeInfoDetail>,
+}
+
+impl TryFrom<AppData> for ReportNodeInfo {
+    type Error = crate::Error;
+    fn try_from(app_data: AppData) -> Result<Self> {
+        ensure!(
+            app_data.data_length() >= 1,
+            AppDataError::DataLength(app_data.data_length())
+        );
+
+        let node_number = app_data.data_units.as_ref().unwrap()[0];
+        app_data.check(
+            Afn::Report,
+            ActiveReport::NodeInfo as u8,
+            1 + node_number as usize * NODE_INFO_SIZE,
+        )?;
+
+        let data_units = app_data.data_units.unwrap();
+        let node_info_details = data_units[1..]
+            .chunks(NODE_INFO_SIZE)
+            .take(node_number as usize)
+            .map(ReportNodeInfoDetail::from)
+            .collect();
+
+        Ok(ReportNodeInfo {
+            node_number,
+            node_info_details,
+        })
+    }
+}
+
+// 工作任务变动类型
+#[derive(Debug, TryFromPrimitive, PartialEq)]
+#[repr(u8)]
+pub enum WorkStatusType {
+    Meter = 1,
+    Search = 2,
+    IdentifyArea = 3,
+    Other,
+}
+
+pub struct ReportWorkStatus {
+    pub work_status_type: WorkStatusType,
+}
+
+impl TryFrom<AppData> for ReportWorkStatus {
+    type Error = crate::Error;
+    fn try_from(app_data: AppData) -> Result<Self> {
+        app_data.check(Afn::Report, ActiveReport::WorkStatus as u8, 1)?;
+
+        let data_units = app_data.data_units.unwrap();
+        Ok(ReportWorkStatus {
+            work_status_type: WorkStatusType::try_from(data_units[0])?,
+        })
+    }
+}
+
+const SLAVE_NODE_INFO_SIZE: usize = 7;
+#[allow(dead_code)]
+pub struct SlaveNodeCommInfo {
+    pub address: Address,
+    pub protocol_type: u8,
+}
+
+impl From<&[u8]> for SlaveNodeCommInfo {
+    fn from(data: &[u8]) -> Self {
+        Self {
+            address: data[0..6].try_into().unwrap(),
+            protocol_type: data[6],
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub struct ReportNodeInfoAndDeviceType {
+    pub node_number: u8,
+    pub node_info: ReportNodeInfoDetail,
+    pub device_type: u8,
+    // 下接从节点数量
+    pub slave_node_count: u8,
+    // 本次传输的从节点数量
+    pub slave_node_number: u8,
+    pub slave_node_comm_infos: Vec<SlaveNodeCommInfo>,
+}
+
+impl TryFrom<AppData> for ReportNodeInfoAndDeviceType {
+    type Error = crate::Error;
+    fn try_from(app_data: AppData) -> Result<Self> {
+        ensure!(
+            app_data.data_length() >= 13,
+            AppDataError::DataLength(app_data.data_length())
+        );
+
+        let slave_node_number = app_data.data_units.as_ref().unwrap()[12];
+        app_data.check(
+            Afn::Report,
+            ActiveReport::NodeInfoAndDeviceType as u8,
+            13 + slave_node_number as usize * SLAVE_NODE_INFO_SIZE,
+        )?;
+
+        let data_units = app_data.data_units.unwrap();
+        let slave_node_comm_infos = data_units[13..]
+            .chunks(SLAVE_NODE_INFO_SIZE)
+            .take(slave_node_number as usize)
+            .map(SlaveNodeCommInfo::from)
+            .collect();
+
+        Ok(ReportNodeInfoAndDeviceType {
+            node_number: data_units[0],
+            node_info: ReportNodeInfoDetail::from(&data_units[1..10]),
+            device_type: data_units[10],
+            slave_node_count: data_units[11],
+            slave_node_number,
+            slave_node_comm_infos,
+        })
+    }
 }
 
 #[derive(Debug, PartialEq)]

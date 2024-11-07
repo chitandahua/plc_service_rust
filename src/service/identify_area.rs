@@ -8,10 +8,8 @@ use crate::protocol::app_data::{
 };
 use crate::protocol::Frame;
 
-use crate::service::parse_response::{
-    mqtt_request_uart_handler, mqtt_response_message, uart_response_mqtt_handler,
-};
-use crate::service::UartResponse;
+use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_mqtt_handler};
+use crate::service::{IntoMqttMessage, UartResponse};
 
 use crate::{MqttResponseError, ReqInfo, Result, UartMessage, APP_NAME};
 
@@ -127,7 +125,7 @@ impl IdentifyArea {
     ) -> Result<()> {
         let request: MqttEnableSearchMeter = serde_json::from_str(message.payload()).unwrap();
         let mqtt_req_info = message.to_mqtt_req_info();
-        let app = Some(MqttTopic::get_app(message.topic()).to_string());
+        let app = MqttTopic::get_app(message.topic()).to_string();
         mqtt_request_uart_handler::<ActiveNodeRegisterRequest>(
             ActiveNodeRegisterRequest::try_from(request)?,
             message,
@@ -137,7 +135,7 @@ impl IdentifyArea {
         // 等待回复
         let mut info = self.info.lock().unwrap();
         info.finished = false;
-        info.app = app;
+        info.app = Some(app);
         info = self
             .cond
             .wait_while(info, |info| info.result.is_none())
@@ -145,9 +143,10 @@ impl IdentifyArea {
         let result = info.result.take().unwrap();
         let is_err = result.is_err();
         mqtt_msg_sender
-            .send(mqtt_response_message(result, mqtt_req_info))
+            .send(result.into_mqtt_message(mqtt_req_info))
             .unwrap();
         if is_err {
+            info.app.take();
             return Err(anyhow::anyhow!("enable search meter failed"));
         }
 
@@ -181,6 +180,7 @@ impl IdentifyArea {
             }
         }
 
+        info.app.take();
         tracing::info!("enable search meter finished");
         Ok(())
     }

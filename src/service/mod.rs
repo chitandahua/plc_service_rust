@@ -121,6 +121,12 @@ pub trait IntoMqttMessage {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage;
 }
 
+impl IntoMqttMessage for () {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttMessage::new_with_req_info_body(mqtt_req_info, None)
+    }
+}
+
 impl<T> IntoMqttMessage for Result<T>
 where
     T: IntoMqttMessage,

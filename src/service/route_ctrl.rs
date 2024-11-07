@@ -2,11 +2,10 @@ use crate::mqtt_handler::MqttTopicType;
 use crate::protocol::app_data::{ConfirmResponse, PauseMetering, RestartMetering, ResumeMetering};
 use crate::protocol::AppData;
 use crate::request_info::UartMessage;
-use crate::service::parse_response::{
-    mqtt_info_request_uart_handler, mqtt_response_message, UartResponse,
-};
+use crate::service::parse_response::{mqtt_info_request_uart_handler, UartResponse};
 use crate::{MqttMessage, MqttMsgHandler, Result, APP_NAME};
 
+use crate::service::IntoMqttMessage;
 use std::ops::DerefMut;
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use timer::{Guard, Timer};
@@ -180,7 +179,7 @@ impl RouteCtrl {
         }
 
         mqtt_msg_sender
-            .send(mqtt_response_message(result, message.to_mqtt_req_info()))
+            .send(result.into_mqtt_message(message.to_mqtt_req_info()))
             .unwrap();
 
         Ok(())

@@ -14,7 +14,7 @@ use crate::protocol::app_data::{
 };
 use crate::protocol::Frame;
 use crate::request_info::MqttReqInfo;
-use crate::service::parse_response::{mqtt_response_message, uart_response_mqtt_handler};
+use crate::service::parse_response::uart_response_mqtt_handler;
 use crate::service::{IntoMqttMessage, UartResponse};
 use crate::{MqttMsgHandler, MqttResponseError, ReqInfo, Result, UartMessage, APP_NAME};
 
@@ -289,7 +289,7 @@ impl NodeManage {
             uart_msg_sender,
         );
 
-        mqtt_msg_sender.send(mqtt_response_message(result, message.to_mqtt_req_info()))?;
+        mqtt_msg_sender.send(result.into_mqtt_message(message.to_mqtt_req_info()))?;
 
         Ok(())
     }

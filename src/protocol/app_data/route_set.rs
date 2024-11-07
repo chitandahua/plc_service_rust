@@ -103,13 +103,14 @@ impl ActiveNodeRegisterRequest {
 
 impl From<ActiveNodeRegisterRequest> for AppData {
     fn from(request: ActiveNodeRegisterRequest) -> Self {
-        let mut data = Vec::new();
-        data.push(dec_to_hex(request.start_time.second() as u8));
-        data.push(dec_to_hex(request.start_time.minute() as u8));
-        data.push(dec_to_hex(request.start_time.hour() as u8));
-        data.push(dec_to_hex(request.start_time.day() as u8));
-        data.push(dec_to_hex(request.start_time.month() as u8));
-        data.push(dec_to_hex((request.start_time.year() % 100) as u8));
+        let mut data = vec![
+            dec_to_hex(request.start_time.second() as u8),
+            dec_to_hex(request.start_time.minute() as u8),
+            dec_to_hex(request.start_time.hour() as u8),
+            dec_to_hex(request.start_time.day() as u8),
+            dec_to_hex(request.start_time.month() as u8),
+            dec_to_hex((request.start_time.year() % 100) as u8),
+        ];
 
         data.extend(request.duration.to_le_bytes());
         data.push(request.retry_count);

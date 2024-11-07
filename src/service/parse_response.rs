@@ -1,6 +1,6 @@
 use std::sync::mpsc;
 
-use crate::mqtt_message::{MqttMessage, Status};
+use crate::mqtt_message::MqttMessage;
 use crate::protocol::app_data::{ConfirmResponse, DenyResponse};
 use crate::protocol::{AppData, Frame};
 use crate::request_info::{MqttReqInfo, UartMessage};
@@ -58,13 +58,6 @@ impl From<UartResponse<ConfirmResponse>> for Result<()> {
             UartResponse::Deny(response) => Err(response.into()),
             UartResponse::Normal(_) => Ok(()),
         }
-    }
-}
-
-pub fn mqtt_response_message(result: Result<()>, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-    match result {
-        Ok(_) => MqttMessage::new_with_req_info_body(mqtt_req_info, None),
-        Err(e) => MqttMessage::new_with_req_info_status_reason(mqtt_req_info, Status::Failure, e),
     }
 }
 

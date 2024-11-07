@@ -7,9 +7,7 @@ use crate::protocol::app_data::{
 };
 
 use crate::request_info::UartMessage;
-use crate::service::parse_response::{
-    mqtt_request_uart_handler, mqtt_response_message, uart_response_mqtt_handler,
-};
+use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_mqtt_handler};
 use crate::{MqttMessage, MqttMsgHandler, Result, APP_NAME};
 
 use crate::service::{IntoMqttMessage, MqttReqInfo, RouteCtrl};
@@ -74,7 +72,7 @@ impl Broadcast {
         let result = route_ctrl.auto_pause_metering(uart_msg_sender);
         if result.is_err() {
             mqtt_msg_sender
-                .send(mqtt_response_message(result, message.to_mqtt_req_info()))
+                .send(result.into_mqtt_message(message.to_mqtt_req_info()))
                 .unwrap();
             return;
         }
@@ -106,7 +104,7 @@ impl Broadcast {
         let result = route_ctrl.auto_pause_metering(uart_msg_sender);
         if result.is_err() {
             mqtt_msg_sender
-                .send(mqtt_response_message(result, message.to_mqtt_req_info()))
+                .send(result.into_mqtt_message(message.to_mqtt_req_info()))
                 .unwrap();
             return;
         }

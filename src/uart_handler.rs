@@ -280,6 +280,9 @@ impl UartMsgHandler {
                 .services
                 .meter_state
                 .uart_metering_state_response(message, &self.mqtt_msg_sender),
+            RouteQuery::NetTopology => {
+                HplcInfo::uart_net_topology_info_response(message, &self.mqtt_msg_sender)
+            }
         }
     }
 

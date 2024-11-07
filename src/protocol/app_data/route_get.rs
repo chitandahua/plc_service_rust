@@ -15,6 +15,7 @@ pub enum RouteQuery {
     NodeInfo = 2,
     RunningStatus = 4,
     SlaveModuleId = 7,
+    NetTopology = 21,
     NodeLineInfo = 31,
     IdInfo = 40,
     ChipInfo = 112,
@@ -468,6 +469,94 @@ impl TryFrom<AppData> for SlaveModuleIdResponse {
             total_node_number,
             node_number: node_number as u8,
             slave_module_id_infos,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct NetTopologyRequest {
+    pub start_seq: u16,
+    pub node_number: u8,
+}
+
+impl NetTopologyRequest {
+    pub fn new(start_seq: u16, node_number: u8) -> Self {
+        Self {
+            start_seq,
+            node_number,
+        }
+    }
+}
+
+impl From<NetTopologyRequest> for AppData {
+    fn from(req: NetTopologyRequest) -> Self {
+        let mut data = Vec::new();
+        data.extend(req.start_seq.to_le_bytes());
+        data.push(req.node_number);
+        AppData::new(Afn::RouteGet, RouteQuery::NetTopology as u8, Some(data))
+    }
+}
+
+const NODE_NETTOPOLOGY_INFO_SIZE: usize = 11;
+#[derive(Debug, PartialEq)]
+pub struct NetTopologyInfo {
+    pub address: Address,
+    pub node_flag: u16,
+    pub proxy_node_flag: u16,
+    pub node_level: u8,
+    pub node_role: u8,
+}
+
+impl TryFrom<&[u8]> for NetTopologyInfo {
+    type Error = crate::Error;
+    fn try_from(data: &[u8]) -> Result<Self> {
+        Ok(Self {
+            address: data[0..ADDR_LEN].try_into().unwrap(),
+            node_flag: u16::from_le_bytes(data[6..8].try_into()?),
+            proxy_node_flag: u16::from_le_bytes(data[8..10].try_into()?),
+            node_level: data[10] & 0x0F,
+            node_role: data[10] >> 4,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct NetTopologyResponse {
+    pub total_node_number: u16,
+    pub start_index: u16,
+    pub node_number: u8,
+    pub net_topology_infos: Vec<NetTopologyInfo>,
+}
+
+const NET_TOPOLOGY_PREFIX_SIZE: usize = 5;
+impl TryFrom<AppData> for NetTopologyResponse {
+    type Error = crate::Error;
+
+    fn try_from(app_data: AppData) -> Result<Self> {
+        ensure!(
+            app_data.data_length() >= NET_TOPOLOGY_PREFIX_SIZE,
+            AppDataError::DataLength(app_data.data_length())
+        );
+
+        let data_units = app_data.data_units.as_ref().unwrap();
+        let node_number = data_units[4] as usize;
+
+        app_data.check(
+            Afn::RouteGet,
+            RouteQuery::NetTopology as u8,
+            node_number * NODE_NETTOPOLOGY_INFO_SIZE + NET_TOPOLOGY_PREFIX_SIZE,
+        )?;
+
+        let net_topology_infos = data_units[NET_TOPOLOGY_PREFIX_SIZE..]
+            .chunks(NODE_NETTOPOLOGY_INFO_SIZE)
+            .take(node_number)
+            .map(NetTopologyInfo::try_from)
+            .collect::<Result<Vec<NetTopologyInfo>>>()?;
+        Ok(Self {
+            total_node_number: u16::from_le_bytes(data_units[0..2].try_into()?),
+            start_index: u16::from_le_bytes(data_units[2..4].try_into()?),
+            node_number: node_number as u8,
+            net_topology_infos,
         })
     }
 }

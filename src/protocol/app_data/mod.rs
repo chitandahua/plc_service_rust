@@ -42,10 +42,11 @@ pub use route_data_read::{ClockDataResponse, CommDelayRequest, CommDelayResponse
 
 mod route_get;
 pub use route_get::{
-    ChipInfoRequest, ChipInfoResponse, CurrentStatus, IdInfoRequest, IdInfoResponse, NodeDetail,
-    QueryNodeInfoRequest, QueryNodeInfoResponse, QueryNodeLineInfoRequest,
-    QueryNodeLineInfoResponse, QueryNodeNumberRequest, QueryNodeNumberResponse, RouteQuery,
-    RunningStatusRequest, RunningStatusResponse, SlaveModuleIdRequest, SlaveModuleIdResponse,
+    ChipInfoRequest, ChipInfoResponse, CurrentStatus, IdInfoRequest, IdInfoResponse,
+    NetTopologyRequest, NetTopologyResponse, NodeDetail, QueryNodeInfoRequest,
+    QueryNodeInfoResponse, QueryNodeLineInfoRequest, QueryNodeLineInfoResponse,
+    QueryNodeNumberRequest, QueryNodeNumberResponse, RouteQuery, RunningStatusRequest,
+    RunningStatusResponse, SlaveModuleIdRequest, SlaveModuleIdResponse,
 };
 
 mod route_set;

@@ -5,8 +5,8 @@ use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::PayloadBody;
 use crate::protocol::app_data::{
     module_id_format_string, ChipInfoRequest, ChipInfoResponse, IdInfoRequest, IdInfoResponse,
-    QueryNodeLineInfoRequest, QueryNodeLineInfoResponse, SlaveModuleIdRequest,
-    SlaveModuleIdResponse,
+    NetTopologyRequest, NetTopologyResponse, QueryNodeLineInfoRequest, QueryNodeLineInfoResponse,
+    SlaveModuleIdRequest, SlaveModuleIdResponse,
 };
 use crate::request_info::{MqttReqInfo, UartMessage};
 use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_mqtt_handler};
@@ -60,6 +60,11 @@ impl HplcInfo {
         let schema =
             schema_check::parse_schema(SCHEMA_PATH.join("get_slave_module_id_schema.json")).ok();
         mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetSlaveModuleId, schema);
+
+        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/netTopoInfo");
+        let schema =
+            schema_check::parse_schema(SCHEMA_PATH.join("get_net_topology_schema.json")).ok();
+        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetNetTopology, schema);
     }
 }
 
@@ -324,5 +329,74 @@ impl HplcInfo {
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
         uart_response_mqtt_handler::<SlaveModuleIdResponse>(message, sender)
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MqttNetTopologyInfo {
+    #[serde(rename = "nodeAddr")]
+    node_addr: String,
+    #[serde(rename = "tei")]
+    node_flag: u16,
+    #[serde(rename = "proxyTei")]
+    proxy_node_flag: u16,
+    #[serde(rename = "nodeLevel")]
+    node_level: u8,
+    #[serde(rename = "nodeRole")]
+    node_role: u8,
+}
+
+#[derive(Debug, Serialize)]
+struct MqttNetTopologyInfoResponse(Vec<MqttNetTopologyInfo>);
+
+impl From<NetTopologyResponse> for MqttNetTopologyInfoResponse {
+    fn from(net_topology_response: NetTopologyResponse) -> Self {
+        Self(
+            net_topology_response
+                .net_topology_infos
+                .into_iter()
+                .map(|net_topology_info| MqttNetTopologyInfo {
+                    node_addr: net_topology_info.address.to_string(),
+                    node_flag: net_topology_info.node_flag,
+                    proxy_node_flag: net_topology_info.proxy_node_flag,
+                    node_level: net_topology_info.node_level,
+                    node_role: net_topology_info.node_role,
+                })
+                .collect(),
+        )
+    }
+}
+
+impl IntoMqttMessage for NetTopologyResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttMessage::new_with_req_info_body(
+            mqtt_req_info,
+            Some(PayloadBody::Nested {
+                body: serde_json::to_value(MqttNetTopologyInfoResponse::from(self)).unwrap(),
+            }),
+        )
+    }
+}
+
+type MqttNetTopologyInfoRequest = HplcInfoRequest;
+
+impl HplcInfo {
+    pub fn mqtt_get_net_topology_info(
+        message: MqttMessage,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) {
+        let req = serde_json::from_str::<MqttNetTopologyInfoRequest>(message.payload()).unwrap();
+        mqtt_request_uart_handler::<NetTopologyRequest>(
+            NetTopologyRequest::new(req.start_index, req.node_number),
+            message,
+            uart_msg_sender,
+        );
+    }
+
+    pub fn uart_net_topology_info_response(
+        message: UartMessage,
+        sender: &mpsc::Sender<MqttMessage>,
+    ) -> Result<()> {
+        uart_response_mqtt_handler::<NetTopologyResponse>(message, sender)
     }
 }

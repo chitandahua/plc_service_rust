@@ -283,6 +283,9 @@ impl UartMsgHandler {
             RouteQuery::NetTopology => {
                 HplcInfo::uart_net_topology_info_response(message, &self.mqtt_msg_sender)
             }
+            RouteQuery::MultipleNet => {
+                HplcInfo::uart_multiple_net_info_response(message, &self.mqtt_msg_sender)
+            }
         }
     }
 

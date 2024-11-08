@@ -18,6 +18,7 @@ pub enum RouteQuery {
     NetTopology = 21,
     NodeLineInfo = 31,
     IdInfo = 40,
+    MultipleNet = 111,
     ChipInfo = 112,
 }
 
@@ -557,6 +558,63 @@ impl TryFrom<AppData> for NetTopologyResponse {
             start_index: u16::from_le_bytes(data_units[2..4].try_into()?),
             node_number: node_number as u8,
             net_topology_infos,
+        })
+    }
+}
+
+pub struct MultipleNetRequest;
+
+impl From<MultipleNetRequest> for AppData {
+    fn from(_: MultipleNetRequest) -> Self {
+        AppData::new(Afn::RouteGet, RouteQuery::MultipleNet as u8, None)
+    }
+}
+
+const MULTIPLE_NET_INFO_SIZE: usize = 3;
+#[derive(Debug, PartialEq)]
+pub struct MultipleNetInfo {
+    pub net_identity: u32,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct MultipleNetResponse {
+    pub total_node_number: u8,
+    pub node_net_identity: u32,
+    pub address: Address,
+    pub multiple_net_infos: Vec<MultipleNetInfo>,
+}
+
+const MULTIPLE_NET_PREFIX_SIZE: usize = 10;
+impl TryFrom<AppData> for MultipleNetResponse {
+    type Error = crate::Error;
+
+    fn try_from(app_data: AppData) -> Result<Self> {
+        ensure!(
+            app_data.data_length() >= MULTIPLE_NET_PREFIX_SIZE,
+            AppDataError::DataLength(app_data.data_length())
+        );
+
+        let data_units = app_data.data_units.as_ref().unwrap();
+        let total_node_number = data_units[0] as usize;
+
+        app_data.check(
+            Afn::RouteGet,
+            RouteQuery::MultipleNet as u8,
+            total_node_number * MULTIPLE_NET_INFO_SIZE + MULTIPLE_NET_PREFIX_SIZE,
+        )?;
+
+        let multiple_net_infos = data_units[MULTIPLE_NET_PREFIX_SIZE..]
+            .chunks(MULTIPLE_NET_INFO_SIZE)
+            .take(total_node_number)
+            .map(|data| MultipleNetInfo {
+                net_identity: u32::from_le_bytes([data[0], data[1], data[2], 0]),
+            })
+            .collect();
+        Ok(Self {
+            total_node_number: total_node_number as u8,
+            node_net_identity: u32::from_le_bytes([data_units[1], data_units[2], data_units[3], 0]),
+            address: data_units[4..10].try_into().unwrap(),
+            multiple_net_infos,
         })
     }
 }

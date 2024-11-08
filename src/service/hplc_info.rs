@@ -5,8 +5,9 @@ use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::PayloadBody;
 use crate::protocol::app_data::{
     module_id_format_string, ChipInfoRequest, ChipInfoResponse, IdInfoRequest, IdInfoResponse,
-    NetTopologyRequest, NetTopologyResponse, QueryNodeLineInfoRequest, QueryNodeLineInfoResponse,
-    SlaveModuleIdRequest, SlaveModuleIdResponse,
+    MultipleNetRequest, MultipleNetResponse, NetTopologyRequest, NetTopologyResponse,
+    QueryNodeLineInfoRequest, QueryNodeLineInfoResponse, SlaveModuleIdRequest,
+    SlaveModuleIdResponse,
 };
 use crate::request_info::{MqttReqInfo, UartMessage};
 use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_mqtt_handler};
@@ -65,6 +66,10 @@ impl HplcInfo {
         let schema =
             schema_check::parse_schema(SCHEMA_PATH.join("get_net_topology_schema.json")).ok();
         mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetNetTopology, schema);
+
+        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/multiNetInformation");
+        let schema = schema_check::parse_schema(SCHEMA_PATH.join("get_multi_net_schema.json")).ok();
+        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetMultiNet, schema);
     }
 }
 
@@ -398,5 +403,67 @@ impl HplcInfo {
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
         uart_response_mqtt_handler::<NetTopologyResponse>(message, sender)
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MqttMultipleNetInfo {
+    #[serde(rename = "nearNodeNID")]
+    net_identity: String,
+}
+
+#[derive(Debug, Serialize)]
+struct MqttMultipleNetInfoResponse {
+    #[serde(rename = "selfNID")]
+    node_net_identity: String,
+    #[serde(rename = "selfMasterAddr")]
+    address: String,
+    body: Vec<MqttMultipleNetInfo>,
+}
+
+impl From<MultipleNetResponse> for MqttMultipleNetInfoResponse {
+    fn from(multiple_net_response: MultipleNetResponse) -> Self {
+        Self {
+            node_net_identity: multiple_net_response.node_net_identity.to_string(),
+            address: multiple_net_response.address.to_string(),
+            body: multiple_net_response
+                .multiple_net_infos
+                .into_iter()
+                .map(|multiple_net_info| MqttMultipleNetInfo {
+                    net_identity: multiple_net_info.net_identity.to_string(),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl IntoMqttMessage for MultipleNetResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttMessage::new_with_req_info_body(
+            mqtt_req_info,
+            Some(PayloadBody::Flat(
+                serde_json::to_value(MqttMultipleNetInfoResponse::from(self)).unwrap(),
+            )),
+        )
+    }
+}
+
+impl HplcInfo {
+    pub fn mqtt_get_multiple_net_info(
+        message: MqttMessage,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) {
+        mqtt_request_uart_handler::<MultipleNetRequest>(
+            MultipleNetRequest,
+            message,
+            uart_msg_sender,
+        );
+    }
+
+    pub fn uart_multiple_net_info_response(
+        message: UartMessage,
+        sender: &mpsc::Sender<MqttMessage>,
+    ) -> Result<()> {
+        uart_response_mqtt_handler::<MultipleNetResponse>(message, sender)
     }
 }

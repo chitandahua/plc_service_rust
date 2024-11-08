@@ -106,6 +106,7 @@ pub enum MqttTopicType {
     GetIdInfo,
     GetSlaveModuleId,
     GetNetTopology,
+    GetMultiNet,
     // debug
     SendDebugFrame,
     // 设备信息
@@ -289,6 +290,10 @@ impl MqttMsgHandler {
                         }
                         MqttTopicType::GetNetTopology => {
                             HplcInfo::mqtt_get_net_topology_info(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::GetMultiNet => {
+                            HplcInfo::mqtt_get_multiple_net_info(message, &uart_msg_sender);
                             Ok(())
                         }
                         MqttTopicType::SendDebugFrame => {

@@ -27,7 +27,7 @@ impl FrameKey {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MqttReqInfo {
     topic: String, // 回复的topic
     token: String,

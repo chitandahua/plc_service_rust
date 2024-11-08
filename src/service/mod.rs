@@ -61,7 +61,7 @@ use timer::Timer;
 use crate::mqtt_message::Status;
 use crate::protocol::app_data::{ConfirmResponse, DenyResponse};
 use crate::request_info::MqttReqInfo;
-use crate::{MeterConfig, MqttMessage, MqttMsgHandler, MqttPayload, Result};
+use crate::{MeterConfig, MqttMessage, MqttMsgHandler, Result};
 
 #[derive(Clone)]
 pub struct ModuleService {
@@ -74,6 +74,7 @@ pub struct ModuleService {
     pub data_transfer: DataTransfer,
     pub meter_state: MeterState,
     pub identify_area: IdentifyArea,
+    pub hplc_info: HplcInfo,
 }
 
 impl ModuleService {
@@ -97,6 +98,7 @@ impl ModuleService {
             data_transfer: DataTransfer::new(metering_state.clone()),
             meter_state: MeterState::new(),
             identify_area: IdentifyArea::new(),
+            hplc_info: HplcInfo::new(),
         })
     }
 
@@ -127,6 +129,12 @@ impl IntoMqttMessage for () {
     }
 }
 
+impl IntoMqttMessage for crate::Error {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttMessage::new_with_req_info_status_reason(mqtt_req_info, Status::Failure, self)
+    }
+}
+
 impl<T> IntoMqttMessage for Result<T>
 where
     T: IntoMqttMessage,
@@ -134,23 +142,26 @@ where
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
         match self {
             Ok(t) => t.into_mqtt_message(mqtt_req_info),
-            Err(e) => {
-                MqttMessage::new_with_req_info_status_reason(mqtt_req_info, Status::Failure, e)
-            }
+            Err(e) => e.into_mqtt_message(mqtt_req_info),
         }
     }
 }
 
 impl IntoMqttMessage for ConfirmResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        let payload = MqttPayload::new_with_token(mqtt_req_info.token(), None);
-        MqttMessage::new(mqtt_req_info.topic(), payload)
+        ().into_mqtt_message(mqtt_req_info)
+    }
+}
+
+impl From<DenyResponse> for anyhow::Error {
+    fn from(value: DenyResponse) -> Self {
+        anyhow::anyhow!(value.error_code())
     }
 }
 
 impl IntoMqttMessage for DenyResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        let payload = MqttPayload::new_with_token_result(mqtt_req_info.token(), Err(self.into()));
-        MqttMessage::new(mqtt_req_info.topic(), payload)
+        let err: crate::Error = self.into();
+        err.into_mqtt_message(mqtt_req_info)
     }
 }

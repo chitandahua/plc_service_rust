@@ -281,7 +281,8 @@ impl UartMsgHandler {
                 .meter_state
                 .uart_metering_state_response(message, &self.mqtt_msg_sender),
             RouteQuery::NetTopology => {
-                HplcInfo::uart_net_topology_info_response(message, &self.mqtt_msg_sender)
+                //HplcInfo::uart_net_topology_info_response(message, &self.mqtt_msg_sender)
+                self.services.hplc_info.uart_net_topology_response(message)
             }
             RouteQuery::MultipleNet => {
                 HplcInfo::uart_multiple_net_info_response(message, &self.mqtt_msg_sender)
@@ -455,6 +456,7 @@ impl UartTimeoutHandler {
                     .identify_area
                     .uart_active_slave_node_register_timeout();
             }
+            (Afn::RouteGet, 21) => self.services.hplc_info.uart_net_topology_response_timeout(),
             _ => match req_info.into_mqtt_req_info() {
                 Some(mqtt_req_info) => self.mqtt_timeout_cb(mqtt_req_info),
                 None => self.plc_init.notify_timeout(),

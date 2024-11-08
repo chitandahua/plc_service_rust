@@ -37,12 +37,6 @@ where
     }
 }
 
-impl From<DenyResponse> for anyhow::Error {
-    fn from(value: DenyResponse) -> Self {
-        anyhow::anyhow!(value.error_code())
-    }
-}
-
 impl<T> From<UartResponse<T>> for Result<T> {
     fn from(value: UartResponse<T>) -> Self {
         match value {

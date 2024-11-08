@@ -289,7 +289,12 @@ impl MqttMsgHandler {
                             Ok(())
                         }
                         MqttTopicType::GetNetTopology => {
-                            HplcInfo::mqtt_get_net_topology_info(message, &uart_msg_sender);
+                            //HplcInfo::mqtt_get_net_topology_info(message, &uart_msg_sender);
+                            services.hplc_info.mqtt_net_topology_info(
+                                message,
+                                &mqtt_msg_sender,
+                                &uart_msg_sender,
+                            );
                             Ok(())
                         }
                         MqttTopicType::GetMultiNet => {

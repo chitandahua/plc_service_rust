@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::sync::mpsc;
+use std::any::Any;
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::PayloadBody;
@@ -9,12 +10,45 @@ use crate::protocol::app_data::{
     QueryNodeLineInfoRequest, QueryNodeLineInfoResponse, SlaveModuleIdRequest,
     SlaveModuleIdResponse,
 };
+use crate::protocol::AppData;
 use crate::request_info::{MqttReqInfo, UartMessage};
-use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_mqtt_handler};
-use crate::service::IntoMqttMessage;
-use crate::{MqttMessage, MqttMsgHandler, Result, APP_NAME};
+use crate::service::parse_response::{
+    mqtt_info_request_uart_handler, mqtt_request_uart_handler, uart_response_mqtt_handler,
+};
+use crate::service::{IntoMqttMessage, UartResponse};
+use crate::{MqttMessage, MqttMsgHandler, MqttResponseError, Result, APP_NAME};
 
-pub struct HplcInfo;
+const QUERY_NODE_NUMBER: u8 = 10;
+
+trait HplcInfoResponse {
+    fn total_number(&self) -> u16;
+    fn item_number(&self) -> u16;
+    fn extend(&mut self, item: Box<dyn Any + Send + Sync>);
+}
+
+// dyn HplcInfoResponse TODO 用不了downcast...  // :Any也不行
+struct MqttHplcInfo {
+    items: Option<Box<dyn Any + Send + Sync>>,
+    result: Option<Result<Box<dyn Any + Send + Sync>>>,
+}
+
+#[derive(Clone)]
+pub struct HplcInfo {
+    info: Arc<Mutex<MqttHplcInfo>>,
+    cond: Arc<Condvar>,
+}
+
+impl HplcInfo {
+    pub fn new() -> Self {
+        Self {
+            info: Arc::new(Mutex::new(MqttHplcInfo {
+                items: None,
+                result: None,
+            })),
+            cond: Arc::new(Condvar::new()),
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct HplcInfoRequest {
@@ -22,6 +56,19 @@ struct HplcInfoRequest {
     start_index: u16,
     #[serde(rename = "nodeNumber")]
     node_number: u8,
+}
+
+trait HplcInfoNew {
+    fn new(start_index: u16, node_number: u8) -> Self;
+}
+
+impl HplcInfoNew for HplcInfoRequest {
+    fn new(start_index: u16, node_number: u8) -> Self {
+        Self {
+            start_index,
+            node_number,
+        }
+    }
 }
 
 impl HplcInfo {
@@ -351,13 +398,19 @@ struct MqttNetTopologyInfo {
     node_role: u8,
 }
 
-#[derive(Debug, Serialize)]
-struct MqttNetTopologyInfoResponse(Vec<MqttNetTopologyInfo>);
+#[derive(Debug, Default, Serialize)]
+struct MqttNetTopologyInfoResponse {
+    #[serde(rename = "totalNumber")]
+    total_number: u16,
+    #[serde(rename = "body")]
+    net_topology_infos: Vec<MqttNetTopologyInfo>,
+}
 
 impl From<NetTopologyResponse> for MqttNetTopologyInfoResponse {
     fn from(net_topology_response: NetTopologyResponse) -> Self {
-        Self(
-            net_topology_response
+        Self {
+            total_number: net_topology_response.total_node_number,
+            net_topology_infos: net_topology_response
                 .net_topology_infos
                 .into_iter()
                 .map(|net_topology_info| MqttNetTopologyInfo {
@@ -368,25 +421,51 @@ impl From<NetTopologyResponse> for MqttNetTopologyInfoResponse {
                     node_role: net_topology_info.node_role,
                 })
                 .collect(),
+        }
+    }
+}
+
+impl HplcInfoResponse for MqttNetTopologyInfoResponse {
+    fn item_number(&self) -> u16 {
+        self.net_topology_infos.len() as u16
+    }
+
+    fn total_number(&self) -> u16 {
+        self.total_number
+    }
+
+    fn extend(&mut self, item: Box<dyn Any + Send + Sync>) {
+        let data = item.downcast::<Self>().unwrap();
+        self.total_number = data.total_number;
+        self.net_topology_infos.extend(data.net_topology_infos);
+    }
+}
+
+impl IntoMqttMessage for MqttNetTopologyInfoResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttMessage::new_with_req_info_body(
+            mqtt_req_info,
+            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
         )
     }
 }
 
 impl IntoMqttMessage for NetTopologyResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Nested {
-                body: serde_json::to_value(MqttNetTopologyInfoResponse::from(self)).unwrap(),
-            }),
-        )
+        MqttNetTopologyInfoResponse::from(self).into_mqtt_message(mqtt_req_info)
+    }
+}
+
+impl From<HplcInfoRequest> for NetTopologyRequest {
+    fn from(value: HplcInfoRequest) -> Self {
+        Self::new(value.start_index, value.node_number)
     }
 }
 
 type MqttNetTopologyInfoRequest = HplcInfoRequest;
 
 impl HplcInfo {
-    pub fn mqtt_get_net_topology_info(
+    pub fn _mqtt_get_net_topology_info(
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) {
@@ -398,11 +477,108 @@ impl HplcInfo {
         );
     }
 
-    pub fn uart_net_topology_info_response(
+    pub fn _uart_net_topology_info_response(
         message: UartMessage,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
         uart_response_mqtt_handler::<NetTopologyResponse>(message, sender)
+    }
+}
+
+impl HplcInfo {
+    fn uart_hplc_info_response<T, R>(&self, message: UartMessage) -> Result<()>
+    where
+        T: TryFrom<AppData, Error = crate::Error>,
+        R: HplcInfoResponse + From<T> + Send + Sync + 'static,
+    {
+        let response = UartResponse::<T>::try_from(message.frame)?;
+        let mut info = self.info.lock().unwrap();
+        let result: Result<T> = response.into();
+        info.result =
+            Some(result.map(|response| Box::new(R::from(response)) as Box<dyn Any + Send + Sync>));
+        self.cond.notify_one();
+
+        Ok(())
+    }
+
+    fn mqtt_hplc_info_request<M, T, R>(
+        &self,
+        message: MqttMessage,
+        mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) where
+        M: HplcInfoNew,
+        T: Into<AppData> + From<M>,
+        R: HplcInfoResponse + Default + IntoMqttMessage + Send + Sync + 'static,
+    {
+        let mqtt_req_info = message.to_mqtt_req_info();
+        let mut info = self.info.lock().unwrap();
+        info.items = Some(Box::new(R::default()));
+        loop {
+            let items = info.items.as_mut().unwrap().downcast_mut::<R>().unwrap();
+            let start_index = 1 + items.item_number();
+            mqtt_info_request_uart_handler::<T>(
+                T::from(M::new(start_index, QUERY_NODE_NUMBER)),
+                Some(MqttReqInfo::default()),
+                uart_msg_sender,
+            );
+            info = self
+                .cond
+                .wait_while(info, |info| info.result.is_none())
+                .unwrap();
+            let data = match info.result.take().unwrap() {
+                Err(e) => {
+                    return mqtt_msg_sender
+                        .send(e.into_mqtt_message(mqtt_req_info))
+                        .unwrap();
+                }
+                Ok(data) => data.downcast::<R>().unwrap(),
+            };
+            let number = data.item_number();
+            let items = info.items.as_mut().unwrap().downcast_mut::<R>().unwrap();
+            items.extend(data);
+
+            tracing::debug!(
+                "item number: {}, total number: {}",
+                items.item_number(),
+                items.total_number()
+            );
+            if number == 0 || items.item_number() >= items.total_number() {
+                return mqtt_msg_sender
+                    .send(
+                        info.items
+                            .take()
+                            .unwrap()
+                            .downcast::<R>()
+                            .unwrap()
+                            .into_mqtt_message(mqtt_req_info),
+                    )
+                    .unwrap();
+            }
+        }
+    }
+
+    pub fn mqtt_net_topology_info(
+        &self,
+        message: MqttMessage,
+        mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) {
+        self.mqtt_hplc_info_request::<MqttNetTopologyInfoRequest, NetTopologyRequest, MqttNetTopologyInfoResponse>(
+            message,
+            mqtt_msg_sender,
+            uart_msg_sender,
+        );
+    }
+
+    pub fn uart_net_topology_response(&self, message: UartMessage) -> Result<()> {
+        self.uart_hplc_info_response::<NetTopologyResponse, MqttNetTopologyInfoResponse>(message)
+    }
+
+    pub fn uart_net_topology_response_timeout(&self) {
+        let mut info = self.info.lock().unwrap();
+        info.result = Some(Err(anyhow::anyhow!(MqttResponseError::Timeout)));
+        self.cond.notify_one();
     }
 }
 

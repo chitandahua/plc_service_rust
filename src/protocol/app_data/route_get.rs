@@ -933,4 +933,47 @@ mod tests {
             response
         );
     }
+
+    #[test]
+    fn test_net_topology_request() {
+        let frame = tests_common::create_frame_from_hex("6812004300000000000310100201000a7316");
+        let request = NetTopologyRequest {
+            start_seq: 0x0001,
+            node_number: 0x0a,
+        };
+        assert_eq!(frame.into_app_data(), request.into());
+    }
+
+    #[test]
+    fn test_net_topology_response() {
+        let frame = tests_common::create_frame_from_hex(
+            "682a008300001000000510100203000100024841020100000100127112010045110001020001004a8716",
+        );
+        let response = NetTopologyResponse {
+            total_node_number: 0x0003,
+            start_index: 0x0001,
+            node_number: 0x02,
+            net_topology_infos: vec![
+                NetTopologyInfo {
+                    address: "000001024148".into(),
+                    node_flag: 1,
+                    proxy_node_flag: 28946,
+                    node_level: 2,
+                    node_role: 1,
+                },
+                NetTopologyInfo {
+                    address: "010011450001".into(),
+                    node_flag: 2,
+                    proxy_node_flag: 1,
+                    node_level: 10,
+                    node_role: 4,
+                },
+            ],
+        };
+
+        assert_eq!(
+            TryInto::<NetTopologyResponse>::try_into(frame.into_app_data()).unwrap(),
+            response
+        );
+    }
 }

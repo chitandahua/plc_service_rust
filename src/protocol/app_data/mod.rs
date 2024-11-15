@@ -14,7 +14,9 @@ mod answer;
 pub use answer::{AnswerFn, ConfirmResponse, DenyResponse};
 
 mod ctrl_cmd;
-pub use ctrl_cmd::{AddressSetRequest, BroadcastRequest, CtrlCmd, IdentifyAreaSetRequest};
+pub use ctrl_cmd::{
+    AddressSetRequest, BroadcastRequest, CtrlCmd, HplcFrequencySetRequest, IdentifyAreaSetRequest,
+};
 
 mod data_trans;
 pub use data_trans::{DataTransfer, TransferFrameRequest, TransferFrameResponse};

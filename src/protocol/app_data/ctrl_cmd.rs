@@ -10,6 +10,7 @@ pub enum CtrlCmd {
     SetAddress = 1,
     Broadcast = 3,
     IdentifyArea = 6,
+    HplcFrequency = 16,
 }
 
 pub struct BroadcastRequest {
@@ -72,6 +73,26 @@ impl From<IdentifyAreaSetRequest> for AppData {
             Afn::CtrlCmd,
             CtrlCmd::IdentifyArea as u8,
             Some(vec![value.enable_flag]),
+        )
+    }
+}
+
+pub struct HplcFrequencySetRequest {
+    frequency: u8,
+}
+
+impl HplcFrequencySetRequest {
+    pub fn new(frequency: u8) -> Self {
+        Self { frequency }
+    }
+}
+
+impl From<HplcFrequencySetRequest> for AppData {
+    fn from(value: HplcFrequencySetRequest) -> Self {
+        AppData::new(
+            Afn::CtrlCmd,
+            CtrlCmd::HplcFrequency as u8,
+            Some(vec![value.frequency]),
         )
     }
 }

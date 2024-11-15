@@ -4,6 +4,9 @@ pub use broadcast::Broadcast;
 mod concurrent_meter;
 pub use concurrent_meter::ConcurrentMeter;
 
+mod control_cmd;
+pub use control_cmd::ControlCmd;
+
 mod data_transfer;
 pub use data_transfer::DataTransfer;
 
@@ -116,6 +119,7 @@ impl ModuleService {
         DataTransfer::init(mqtt_msg_handler);
         MeterState::init(mqtt_msg_handler);
         IdentifyArea::init(mqtt_msg_handler);
+        ControlCmd::init(mqtt_msg_handler);
     }
 }
 

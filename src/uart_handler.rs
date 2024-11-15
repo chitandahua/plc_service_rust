@@ -8,8 +8,8 @@ use crate::protocol::app_data::{
 };
 use crate::request_info::{MqttReqInfo, ReqInfo};
 use crate::service::{
-    Broadcast, DebugMethod, EventReport, HplcInfo, IdentifyArea, MeterState, ModuleService,
-    PlcInit, RouteDataRequest,
+    Broadcast, ControlCmd, DebugMethod, EventReport, HplcInfo, IdentifyArea, MeterState,
+    ModuleService, PlcInit, RouteDataRequest,
 };
 use crate::{ModuleInfo, MqttMessage, MqttPayload};
 use crate::{MqttResponseError, Result, UartHandler, UartMessage};
@@ -232,6 +232,9 @@ impl UartMsgHandler {
             }
             CtrlCmd::IdentifyArea => {
                 IdentifyArea::uart_identify_area_set(message, &self.mqtt_msg_sender)?;
+            }
+            CtrlCmd::HplcFrequency => {
+                ControlCmd::uart_hplc_frequency_response(message, &self.mqtt_msg_sender)?;
             }
         }
         Ok(())

@@ -1,6 +1,7 @@
 use crate::mqtt_message::Status;
 use crate::service::{
-    Broadcast, DebugMethod, HplcInfo, IdentifyArea, MasterAddress, ModuleInfo, ModuleService,
+    Broadcast, ControlCmd, DebugMethod, HplcInfo, IdentifyArea, MasterAddress, ModuleInfo,
+    ModuleService,
 };
 use crate::{schema_check, MqttHandler, MqttResponseError, PlcDevice, Result};
 use crate::{MqttMessage, UartMessage};
@@ -130,6 +131,8 @@ pub enum MqttTopicType {
     // 台区搜表
     EnableSearchMeter,
     DisableSearchMeter,
+    // 控制命令
+    HplcFrequency,
 }
 
 struct MqttTopicFilter {
@@ -399,6 +402,10 @@ impl MqttMsgHandler {
                         }
                         MqttTopicType::DisableSearchMeter => {
                             IdentifyArea::mqtt_stop_slave_node_register(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::HplcFrequency => {
+                            ControlCmd::mqtt_set_hplc_frequency(message, &uart_msg_sender);
                             Ok(())
                         }
                     };

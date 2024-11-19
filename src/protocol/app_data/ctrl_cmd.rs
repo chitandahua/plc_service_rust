@@ -8,6 +8,7 @@ use crate::protocol::AppData;
 #[repr(u8)]
 pub enum CtrlCmd {
     SetAddress = 1,
+    RefuseSlaveReport = 2,
     Broadcast = 3,
     IdentifyArea = 6,
     HplcFrequency = 16,
@@ -93,6 +94,26 @@ impl From<HplcFrequencySetRequest> for AppData {
             Afn::CtrlCmd,
             CtrlCmd::HplcFrequency as u8,
             Some(vec![value.frequency]),
+        )
+    }
+}
+
+pub struct SlaveReportRequest {
+    enable: u8,
+}
+
+impl SlaveReportRequest {
+    pub fn new(enable: u8) -> Self {
+        Self { enable }
+    }
+}
+
+impl From<SlaveReportRequest> for AppData {
+    fn from(value: SlaveReportRequest) -> Self {
+        AppData::new(
+            Afn::CtrlCmd,
+            CtrlCmd::RefuseSlaveReport as u8,
+            Some(vec![value.enable]),
         )
     }
 }

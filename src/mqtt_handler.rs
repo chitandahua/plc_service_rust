@@ -133,6 +133,7 @@ pub enum MqttTopicType {
     DisableSearchMeter,
     // 控制命令
     HplcFrequency,
+    RefuseSlaveReport,
 }
 
 struct MqttTopicFilter {
@@ -406,6 +407,10 @@ impl MqttMsgHandler {
                         }
                         MqttTopicType::HplcFrequency => {
                             ControlCmd::mqtt_set_hplc_frequency(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::RefuseSlaveReport => {
+                            ControlCmd::mqtt_refuse_slave_report(message, &uart_msg_sender);
                             Ok(())
                         }
                     };

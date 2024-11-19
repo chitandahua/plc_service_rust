@@ -16,6 +16,7 @@ pub use answer::{AnswerFn, ConfirmResponse, DenyResponse};
 mod ctrl_cmd;
 pub use ctrl_cmd::{
     AddressSetRequest, BroadcastRequest, CtrlCmd, HplcFrequencySetRequest, IdentifyAreaSetRequest,
+    SlaveReportRequest,
 };
 
 mod data_trans;

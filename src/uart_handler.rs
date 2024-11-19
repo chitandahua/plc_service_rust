@@ -236,6 +236,9 @@ impl UartMsgHandler {
             CtrlCmd::HplcFrequency => {
                 ControlCmd::uart_hplc_frequency_response(message, &self.mqtt_msg_sender)?;
             }
+            CtrlCmd::RefuseSlaveReport => {
+                ControlCmd::uart_refuse_slave_report_response(message, &self.mqtt_msg_sender)?;
+            }
         }
         Ok(())
     }

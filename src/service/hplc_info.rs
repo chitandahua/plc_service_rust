@@ -514,7 +514,7 @@ impl HplcInfo {
         let mqtt_req_info = message.to_mqtt_req_info();
         let mut info = self.info.lock().unwrap();
         info.items = Some(Box::new(R::default()));
-        loop {
+        let response = loop {
             let items = info.items.as_mut().unwrap().downcast_mut::<R>().unwrap();
             let start_index = 1 + items.item_number();
             mqtt_info_request_uart_handler::<T>(
@@ -528,9 +528,7 @@ impl HplcInfo {
                 .unwrap();
             let data = match info.result.take().unwrap() {
                 Err(e) => {
-                    return mqtt_msg_sender
-                        .send(e.into_mqtt_message(mqtt_req_info))
-                        .unwrap();
+                    break e.into_mqtt_message(mqtt_req_info);
                 }
                 Ok(data) => data.downcast::<R>().unwrap(),
             };
@@ -544,18 +542,17 @@ impl HplcInfo {
                 items.total_number()
             );
             if number == 0 || items.item_number() >= items.total_number() {
-                return mqtt_msg_sender
-                    .send(
-                        info.items
-                            .take()
-                            .unwrap()
-                            .downcast::<R>()
-                            .unwrap()
-                            .into_mqtt_message(mqtt_req_info),
-                    )
-                    .unwrap();
+                break info
+                    .items
+                    .take()
+                    .unwrap()
+                    .downcast::<R>()
+                    .unwrap()
+                    .into_mqtt_message(mqtt_req_info);
             }
-        }
+        };
+
+        mqtt_msg_sender.send(response).unwrap();
     }
 
     pub fn mqtt_net_topology_info(

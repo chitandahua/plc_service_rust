@@ -196,6 +196,9 @@ impl UartMsgHandler {
                 &self.mqtt_msg_sender,
                 &self.uart_msg_sender,
             ),
+            QueryData::HplcFrequency => {
+                ModuleInfo::uart_get_hplc_freq_response(message, &self.mqtt_msg_sender)
+            }
         }
     }
 

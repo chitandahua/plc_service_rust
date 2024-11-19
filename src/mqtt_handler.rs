@@ -90,6 +90,7 @@ impl PriorityQueue {
 pub enum MqttTopicType {
     GetModuleInfo,
     GetMasterIdInfo,
+    GetHplcFreq,
     // 主地址
     GetMasterAddress,
     SetMasterAddress,
@@ -411,6 +412,10 @@ impl MqttMsgHandler {
                         }
                         MqttTopicType::RefuseSlaveReport => {
                             ControlCmd::mqtt_refuse_slave_report(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::GetHplcFreq => {
+                            ModuleInfo::mqtt_get_hplc_freq(message, &uart_msg_sender);
                             Ok(())
                         }
                     };

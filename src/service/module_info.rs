@@ -110,6 +110,56 @@ impl ModuleInfo {
         let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/hostModeID");
         let schema = schema_check::parse_schema(SCHEMA_PATH.join("get_master_id_schema.json")).ok();
         mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetMasterIdInfo, schema);
+
+        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/hplcFreq");
+        let schema = schema_check::parse_schema(SCHEMA_PATH.join("get_hplc_freq_schema.json")).ok();
+        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetHplcFreq, schema);
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct HplcFrequencyResponse {
+    #[serde(rename = "hplcFreq")]
+    hplc_freq: u8,
+}
+
+impl From<app_data::GetHplcFreqResponse> for HplcFrequencyResponse {
+    fn from(hplc_freq_response: app_data::GetHplcFreqResponse) -> Self {
+        HplcFrequencyResponse {
+            hplc_freq: hplc_freq_response.frequency,
+        }
+    }
+}
+
+impl IntoMqttMessage for HplcFrequencyResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttMessage::new_with_req_info_body(
+            mqtt_req_info,
+            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
+        )
+    }
+}
+
+impl IntoMqttMessage for app_data::GetHplcFreqResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        HplcFrequencyResponse::from(self).into_mqtt_message(mqtt_req_info)
+    }
+}
+
+impl ModuleInfo {
+    pub fn mqtt_get_hplc_freq(message: MqttMessage, uart_msg_sender: &mpsc::Sender<UartMessage>) {
+        mqtt_request_uart_handler::<app_data::GetHplcFreqRequest>(
+            app_data::GetHplcFreqRequest,
+            message,
+            uart_msg_sender,
+        );
+    }
+
+    pub fn uart_get_hplc_freq_response(
+        message: UartMessage,
+        sender: &mpsc::Sender<MqttMessage>,
+    ) -> Result<()> {
+        uart_response_mqtt_handler::<app_data::GetHplcFreqResponse>(message, sender)
     }
 }
 

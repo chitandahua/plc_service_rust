@@ -15,6 +15,7 @@ pub enum QueryData {
     BroadcastDelay = 9,
     GetModuleInfo = 10,
     GetMasterIdInfo = 12,
+    HplcFrequency = 16,
 }
 
 pub struct BroadcastDelayRequest {
@@ -262,6 +263,29 @@ impl TryFrom<AppData> for MasterIdInfoResponse {
             module_id_length: data_unit[2],
             module_id_format: data_unit[3].try_into()?,
             module_id: data_unit[4..].to_vec(),
+        })
+    }
+}
+
+pub struct GetHplcFreqRequest;
+
+impl From<GetHplcFreqRequest> for AppData {
+    fn from(_: GetHplcFreqRequest) -> Self {
+        AppData::new(Afn::QueryData, QueryData::HplcFrequency as u8, None)
+    }
+}
+
+pub struct GetHplcFreqResponse {
+    pub frequency: u8,
+}
+
+impl TryFrom<AppData> for GetHplcFreqResponse {
+    type Error = crate::Error;
+    fn try_from(app_data: AppData) -> Result<Self> {
+        app_data.check(Afn::QueryData, QueryData::HplcFrequency as u8, 1)?;
+        let data_unit = app_data.data_units.unwrap();
+        Ok(Self {
+            frequency: data_unit[0],
         })
     }
 }

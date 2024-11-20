@@ -7,8 +7,8 @@ use crate::mqtt_message::PayloadBody;
 use crate::protocol::app_data::{
     module_id_format_string, ChipInfoRequest, ChipInfoResponse, IdInfoRequest, IdInfoResponse,
     MultipleNetRequest, MultipleNetResponse, NetTopologyRequest, NetTopologyResponse,
-    QueryNodeLineInfoRequest, QueryNodeLineInfoResponse, SlaveModuleIdRequest,
-    SlaveModuleIdResponse,
+    NetworkSizeRequest, NetworkSizeResponse, QueryNodeLineInfoRequest, QueryNodeLineInfoResponse,
+    SlaveModuleIdRequest, SlaveModuleIdResponse,
 };
 use crate::protocol::AppData;
 use crate::request_info::{MqttReqInfo, UartMessage};
@@ -117,6 +117,11 @@ impl HplcInfo {
         let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/multiNetInformation");
         let schema = schema_check::parse_schema(SCHEMA_PATH.join("get_multi_net_schema.json")).ok();
         mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetMultiNet, schema);
+
+        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/networkSize");
+        let schema =
+            schema_check::parse_schema(SCHEMA_PATH.join("get_network_size_schema.json")).ok();
+        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetNetworkSize, schema);
     }
 }
 
@@ -638,5 +643,54 @@ impl HplcInfo {
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
         uart_response_mqtt_handler::<MultipleNetResponse>(message, sender)
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MqttNetworkSizeResponse {
+    #[serde(rename = "netWorkSize")]
+    network_size: u16,
+}
+
+impl From<NetworkSizeResponse> for MqttNetworkSizeResponse {
+    fn from(network_size_response: NetworkSizeResponse) -> Self {
+        Self {
+            network_size: network_size_response.network_size,
+        }
+    }
+}
+
+impl IntoMqttMessage for MqttNetworkSizeResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttMessage::new_with_req_info_body(
+            mqtt_req_info,
+            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
+        )
+    }
+}
+
+impl IntoMqttMessage for NetworkSizeResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttNetworkSizeResponse::from(self).into_mqtt_message(mqtt_req_info)
+    }
+}
+
+impl HplcInfo {
+    pub fn mqtt_get_network_size(
+        message: MqttMessage,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) {
+        mqtt_request_uart_handler::<NetworkSizeRequest>(
+            NetworkSizeRequest,
+            message,
+            uart_msg_sender,
+        );
+    }
+
+    pub fn uart_network_size_response(
+        message: UartMessage,
+        sender: &mpsc::Sender<MqttMessage>,
+    ) -> Result<()> {
+        uart_response_mqtt_handler::<NetworkSizeResponse>(message, sender)
     }
 }

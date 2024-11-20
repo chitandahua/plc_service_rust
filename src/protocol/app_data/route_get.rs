@@ -15,6 +15,7 @@ pub enum RouteQuery {
     NodeInfo = 2,
     RunningStatus = 4,
     SlaveModuleId = 7,
+    NetworkSize = 9,
     NetTopology = 21,
     NodeLineInfo = 31,
     IdInfo = 40,
@@ -628,6 +629,7 @@ impl From<RunningStatusRequest> for AppData {
 }
 
 #[allow(dead_code)]
+#[derive(Debug, PartialEq)]
 pub struct RunningStatus {
     error_code: u8,
     report_event_flag: u8,
@@ -647,6 +649,7 @@ impl From<u8> for RunningStatus {
 }
 
 #[allow(dead_code)]
+#[derive(Debug, PartialEq)]
 pub struct WorkStatus {
     meter_status: u8,
     area_identify_status: u8,
@@ -668,6 +671,7 @@ impl From<u8> for WorkStatus {
 }
 
 #[allow(dead_code)]
+#[derive(Debug, PartialEq)]
 pub struct RunningStatusResponse {
     running_status: RunningStatus,
     total_node_number: u16,
@@ -704,13 +708,37 @@ impl TryFrom<AppData> for RunningStatusResponse {
 
         Ok(Self {
             running_status: data_units[0].into(),
-            total_node_number: u16::from_le_bytes([data_units[2], data_units[1]]),
-            meter_node_number: u16::from_le_bytes([data_units[4], data_units[3]]),
-            relay_meter_node_number: u16::from_le_bytes([data_units[6], data_units[5]]),
+            total_node_number: u16::from_le_bytes([data_units[1], data_units[2]]),
+            meter_node_number: u16::from_le_bytes([data_units[3], data_units[4]]),
+            relay_meter_node_number: u16::from_le_bytes([data_units[5], data_units[6]]),
             work_status: data_units[7].into(),
-            comm_speed: u16::from_le_bytes([data_units[9], data_units[8]]),
+            comm_speed: u16::from_le_bytes([data_units[8], data_units[9]]),
             relay_level: data_units[10..13].try_into().unwrap(),
             work_step: data_units[13..16].try_into().unwrap(),
+        })
+    }
+}
+
+pub struct NetworkSizeRequest;
+
+impl From<NetworkSizeRequest> for AppData {
+    fn from(_: NetworkSizeRequest) -> Self {
+        AppData::new(Afn::RouteGet, RouteQuery::NetworkSize as u8, None)
+    }
+}
+
+pub struct NetworkSizeResponse {
+    pub network_size: u16,
+}
+
+impl TryFrom<AppData> for NetworkSizeResponse {
+    type Error = crate::Error;
+
+    fn try_from(app_data: AppData) -> Result<Self> {
+        app_data.check(Afn::RouteGet, RouteQuery::NetworkSize as u8, 2)?;
+        let data_units = app_data.data_units.unwrap();
+        Ok(Self {
+            network_size: u16::from_le_bytes([data_units[0], data_units[1]]),
         })
     }
 }
@@ -973,6 +1001,46 @@ mod tests {
 
         assert_eq!(
             TryInto::<NetTopologyResponse>::try_into(frame.into_app_data()).unwrap(),
+            response
+        );
+    }
+
+    #[test]
+    fn test_running_status_request() {
+        let frame = tests_common::create_frame_from_hex("680f00430000000000031008005e16");
+
+        assert_eq!(frame.into_app_data(), RunningStatusRequest {}.into());
+    }
+
+    #[test]
+    fn test_running_status_response() {
+        let frame = tests_common::create_frame_from_hex(
+            "681f00830000100000031008000101025000022222f014431600000000a516",
+        );
+        let response = RunningStatusResponse {
+            running_status: RunningStatus {
+                error_code: 0,
+                report_event_flag: 0,
+                work_flag: 0,
+                route_finish_flag: 1,
+            },
+            total_node_number: 0x0201,
+            meter_node_number: 0x0050,
+            relay_meter_node_number: 0x2202,
+            work_status: WorkStatus {
+                meter_status: 0,
+                area_identify_status: 0,
+                report_event_flag: 0,
+                register_permit: 1,
+                work_status: 0,
+            },
+            comm_speed: 0x14f0,
+            relay_level: [0x43, 0x16, 0x00],
+            work_step: [0x00, 0x00, 0x00],
+        };
+
+        assert_eq!(
+            TryInto::<RunningStatusResponse>::try_into(frame.into_app_data()).unwrap(),
             response
         );
     }

@@ -296,6 +296,9 @@ impl UartMsgHandler {
             RouteQuery::MultipleNet => {
                 HplcInfo::uart_multiple_net_info_response(message, &self.mqtt_msg_sender)
             }
+            RouteQuery::NetworkSize => {
+                HplcInfo::uart_network_size_response(message, &self.mqtt_msg_sender)
+            }
         }
     }
 

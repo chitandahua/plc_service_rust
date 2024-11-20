@@ -109,6 +109,7 @@ pub enum MqttTopicType {
     GetSlaveModuleId,
     GetNetTopology,
     GetMultiNet,
+    GetNetworkSize,
     // debug
     SendDebugFrame,
     // 设备信息
@@ -416,6 +417,10 @@ impl MqttMsgHandler {
                         }
                         MqttTopicType::GetHplcFreq => {
                             ModuleInfo::mqtt_get_hplc_freq(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::GetNetworkSize => {
+                            HplcInfo::mqtt_get_network_size(message, &uart_msg_sender);
                             Ok(())
                         }
                     };

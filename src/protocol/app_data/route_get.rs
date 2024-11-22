@@ -633,7 +633,7 @@ impl From<RunningStatusRequest> for AppData {
 pub struct RunningStatus {
     error_code: u8,
     report_event_flag: u8,
-    work_flag: u8,
+    pub work_flag: u8,
     route_finish_flag: u8,
 }
 
@@ -673,7 +673,7 @@ impl From<u8> for WorkStatus {
 #[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub struct RunningStatusResponse {
-    running_status: RunningStatus,
+    pub running_status: RunningStatus,
     total_node_number: u16,
     meter_node_number: u16,
     relay_meter_node_number: u16,

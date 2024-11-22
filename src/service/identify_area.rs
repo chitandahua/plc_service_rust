@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 
 struct IdentifyAreaInfo {
-    app: Option<String>,
+    report_info: Option<ReportNodeInfoAndDeviceType>,
     result: Option<Result<()>>,
     finished: bool,
 }
@@ -66,7 +66,7 @@ impl IdentifyArea {
     pub fn new() -> Self {
         Self {
             info: Arc::new(Mutex::new(IdentifyAreaInfo {
-                app: None,
+                report_info: None,
                 result: None,
                 finished: false,
             })),
@@ -125,7 +125,12 @@ impl IdentifyArea {
     ) -> Result<()> {
         let request: MqttEnableSearchMeter = serde_json::from_str(message.payload()).unwrap();
         let mqtt_req_info = message.to_mqtt_req_info();
-        let app = MqttTopic::get_app(message.topic()).to_string();
+        let report_topic = format!(
+            "{}/notify/spont/{}/searchMeter",
+            APP_NAME,
+            MqttTopic::get_app(message.topic())
+        );
+
         mqtt_request_uart_handler::<ActiveNodeRegisterRequest>(
             ActiveNodeRegisterRequest::try_from(request)?,
             message,
@@ -135,7 +140,6 @@ impl IdentifyArea {
         // 等待回复
         let mut info = self.info.lock().unwrap();
         info.finished = false;
-        info.app = Some(app);
         info = self
             .cond
             .wait_while(info, |info| info.result.is_none())
@@ -146,7 +150,6 @@ impl IdentifyArea {
             .send(result.into_mqtt_message(mqtt_req_info))
             .unwrap();
         if is_err {
-            info.app.take();
             return Err(anyhow::anyhow!("enable search meter failed"));
         }
 
@@ -156,7 +159,7 @@ impl IdentifyArea {
             let result = self
                 .cond
                 .wait_timeout_while(info, std::time::Duration::from_secs(10 * 60), |info| {
-                    info.result.is_none()
+                    info.report_info.is_none() && info.result.is_none()
                 })
                 .unwrap();
             info = result.0;
@@ -175,12 +178,21 @@ impl IdentifyArea {
                 if let Err(e) = info.result.take().unwrap() {
                     tracing::error!(cause = ?e, "get running status failed");
                 }
+            } else if info.report_info.is_some() {
+                let payload = MqttSearchMeterResponse::from(info.report_info.take().unwrap());
+                mqtt_msg_sender
+                    .send(MqttMessage::new(
+                        report_topic.clone(),
+                        MqttPayload::new_with_body(Some(PayloadBody::Nested {
+                            body: serde_json::to_value(payload).unwrap(),
+                        })),
+                    ))
+                    .unwrap();
             } else {
                 info.result = None;
             }
         }
 
-        info.app.take();
         tracing::info!("enable search meter finished");
         Ok(())
     }
@@ -228,7 +240,8 @@ impl IdentifyArea {
 
         match result {
             Ok(status) => {
-                if status.work_status.work_status == 0 {
+                if status.running_status.work_flag == 0 {
+                    tracing::debug!("search meter finished");
                     self.notify_finished(Ok(()))
                 } else {
                     self.notify(Ok(()))
@@ -295,6 +308,7 @@ impl IdentifyArea {
         let work_status = ReportWorkStatus::try_from(message.frame.into_app_data())?;
         // 搜表结束通知
         if work_status.work_status_type == WorkStatusType::Search {
+            tracing::debug!("report search meter finished");
             self.notify_finished(Ok(()));
         }
         Ok(())
@@ -303,7 +317,6 @@ impl IdentifyArea {
     pub fn uart_slave_node_info_and_device_report(
         &self,
         message: UartMessage,
-        mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
         // 回复
@@ -311,22 +324,11 @@ impl IdentifyArea {
         let response = UartMessage::new(ReqInfo::new(&message.frame, None), frame);
         uart_msg_sender.send(response).unwrap();
 
-        let app = {
-            let info = self.info.lock().unwrap();
-            info.app.clone().ok_or(anyhow::anyhow!("no request app"))?
-        };
-        let topic = format!("{}/notify/spont/{}/searchMeter", APP_NAME, app);
-        let report = ReportNodeInfoAndDeviceType::try_from(message.frame.into_app_data())?;
-        let payload = MqttSearchMeterResponse::from(report);
-        mqtt_msg_sender
-            .send(MqttMessage::new(
-                topic,
-                MqttPayload::new_with_body(Some(PayloadBody::Nested {
-                    body: serde_json::to_value(payload).unwrap(),
-                })),
-            ))
-            .unwrap();
-        self.notify(Ok(()));
+        let report_info = ReportNodeInfoAndDeviceType::try_from(message.frame.into_app_data())?;
+
+        let mut info = self.info.lock().unwrap();
+        info.report_info = Some(report_info);
+        self.cond.notify_one();
 
         Ok(())
     }

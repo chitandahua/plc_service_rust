@@ -76,11 +76,7 @@ impl UartMsgHandler {
             ActiveReport::NodeInfoAndDeviceType => self
                 .services
                 .identify_area
-                .uart_slave_node_info_and_device_report(
-                    message,
-                    &self.mqtt_msg_sender,
-                    &self.uart_msg_sender,
-                ),
+                .uart_slave_node_info_and_device_report(message, &self.uart_msg_sender),
             ActiveReport::WorkStatus => self
                 .services
                 .identify_area

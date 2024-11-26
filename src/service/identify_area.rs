@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 
 struct IdentifyAreaInfo {
-    report_info: Option<ReportNodeInfoAndDeviceType>,
+    report_info: Vec<ReportNodeInfoAndDeviceType>,
     result: Option<Result<()>>,
     finished: bool,
 }
@@ -66,7 +66,7 @@ impl IdentifyArea {
     pub fn new() -> Self {
         Self {
             info: Arc::new(Mutex::new(IdentifyAreaInfo {
-                report_info: None,
+                report_info: Vec::new(),
                 result: None,
                 finished: false,
             })),
@@ -159,7 +159,7 @@ impl IdentifyArea {
             let result = self
                 .cond
                 .wait_timeout_while(info, std::time::Duration::from_secs(10 * 60), |info| {
-                    info.report_info.is_none() && info.result.is_none()
+                    info.report_info.is_empty() && info.result.is_none()
                 })
                 .unwrap();
             info = result.0;
@@ -178,13 +178,16 @@ impl IdentifyArea {
                 if let Err(e) = info.result.take().unwrap() {
                     tracing::error!(cause = ?e, "get running status failed");
                 }
-            } else if info.report_info.is_some() {
-                let payload = MqttSearchMeterResponse::from(info.report_info.take().unwrap());
+            } else if !info.report_info.is_empty() {
+                let body = std::mem::take(&mut info.report_info)
+                    .into_iter()
+                    .map(MqttSearchMeterResponse::from)
+                    .collect::<Vec<_>>();
                 mqtt_msg_sender
                     .send(MqttMessage::new(
                         report_topic.clone(),
                         MqttPayload::new_with_body(Some(PayloadBody::Nested {
-                            body: serde_json::to_value(payload).unwrap(),
+                            body: serde_json::to_value(body).unwrap(),
                         })),
                     ))
                     .unwrap();
@@ -324,10 +327,10 @@ impl IdentifyArea {
         let response = UartMessage::new(ReqInfo::new(&message.frame, None), frame);
         uart_msg_sender.send(response).unwrap();
 
-        let report_info = ReportNodeInfoAndDeviceType::try_from(message.frame.into_app_data())?;
+        let report = ReportNodeInfoAndDeviceType::try_from(message.frame.into_app_data())?;
 
         let mut info = self.info.lock().unwrap();
-        info.report_info = Some(report_info);
+        info.report_info.push(report);
         self.cond.notify_one();
 
         Ok(())

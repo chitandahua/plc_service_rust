@@ -79,6 +79,18 @@ pub(crate) fn _uart_response_handler<
     Ok(())
 }
 
+pub(crate) fn mqtt_request_handler<T, M>(
+    message: MqttMessage,
+    uart_msg_sender: &mpsc::Sender<UartMessage>,
+) where
+    T: Into<AppData> + From<M>,
+    M: serde::de::DeserializeOwned,
+{
+    let request = T::from(serde_json::from_str::<M>(message.payload()).unwrap());
+    let mqtt_req_info = MqttReqInfo::new(message.topic(), message.get_token(), None);
+    mqtt_info_request_uart_handler::<T>(request, Some(mqtt_req_info), uart_msg_sender);
+}
+
 pub(crate) fn mqtt_request_uart_handler<T: Into<AppData>>(
     app_data: T,
     message: MqttMessage,

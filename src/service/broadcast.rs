@@ -7,7 +7,7 @@ use crate::protocol::app_data::{
 };
 
 use crate::request_info::UartMessage;
-use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_mqtt_handler};
+use crate::service::parse_response::{mqtt_request_handler, uart_response_mqtt_handler};
 use crate::{MqttMessage, MqttMsgHandler, Result, APP_NAME};
 
 use crate::service::{IntoMqttMessage, MqttReqInfo, RouteCtrl};
@@ -21,6 +21,12 @@ struct MqttBroadCastDelayRequest {
     #[serde(rename = "proType")]
     pro_type: u8,
     data: String,
+}
+
+impl From<MqttBroadCastDelayRequest> for BroadcastDelayRequest {
+    fn from(req: MqttBroadCastDelayRequest) -> Self {
+        BroadcastDelayRequest::new(req.pro_type, hex::decode(req.data).unwrap())
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -48,6 +54,12 @@ impl IntoMqttMessage for BroadcastDelayResponse {
 }
 
 type MqttBroadCastCmdRequest = MqttBroadCastDelayRequest;
+
+impl From<MqttBroadCastCmdRequest> for BroadcastRequest {
+    fn from(req: MqttBroadCastCmdRequest) -> Self {
+        BroadcastRequest::new(req.pro_type, hex::decode(req.data).unwrap())
+    }
+}
 
 impl Broadcast {
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
@@ -77,9 +89,7 @@ impl Broadcast {
             return;
         }
 
-        let request: MqttBroadCastDelayRequest = serde_json::from_str(message.payload()).unwrap();
-        mqtt_request_uart_handler::<BroadcastDelayRequest>(
-            BroadcastDelayRequest::new(request.pro_type, hex::decode(request.data).unwrap()),
+        mqtt_request_handler::<BroadcastDelayRequest, MqttBroadCastCmdRequest>(
             message,
             uart_msg_sender,
         );
@@ -109,12 +119,7 @@ impl Broadcast {
             return;
         }
 
-        let request: MqttBroadCastCmdRequest = serde_json::from_str(message.payload()).unwrap();
-        mqtt_request_uart_handler::<BroadcastRequest>(
-            BroadcastRequest::new(request.pro_type, hex::decode(request.data).unwrap()),
-            message,
-            uart_msg_sender,
-        );
+        mqtt_request_handler::<BroadcastRequest, MqttBroadCastCmdRequest>(message, uart_msg_sender);
     }
 
     pub fn uart_broadcast_cmd_response(

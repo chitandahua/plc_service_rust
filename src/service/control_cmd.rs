@@ -6,7 +6,7 @@ use crate::protocol::app_data::{ConfirmResponse, HplcFrequencySetRequest, SlaveR
 use crate::request_info::UartMessage;
 use crate::{MqttMessage, MqttMsgHandler, Result, APP_NAME};
 
-use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_mqtt_handler};
+use crate::service::parse_response::{mqtt_request_handler, uart_response_mqtt_handler};
 
 use std::sync::mpsc;
 
@@ -54,9 +54,7 @@ impl ControlCmd {
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) {
-        let req = serde_json::from_str::<MqttHplcFrequencyRequest>(message.payload()).unwrap();
-        mqtt_request_uart_handler::<HplcFrequencySetRequest>(
-            HplcFrequencySetRequest::from(req),
+        mqtt_request_handler::<HplcFrequencySetRequest, MqttHplcFrequencyRequest>(
             message,
             uart_msg_sender,
         );
@@ -66,9 +64,7 @@ impl ControlCmd {
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) {
-        let req = serde_json::from_str::<MqttRefuseSlaveReportRequest>(message.payload()).unwrap();
-        mqtt_request_uart_handler::<SlaveReportRequest>(
-            SlaveReportRequest::from(req),
+        mqtt_request_handler::<SlaveReportRequest, MqttRefuseSlaveReportRequest>(
             message,
             uart_msg_sender,
         );

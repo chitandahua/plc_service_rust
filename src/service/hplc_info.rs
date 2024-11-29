@@ -13,7 +13,8 @@ use crate::protocol::app_data::{
 use crate::protocol::AppData;
 use crate::request_info::{MqttReqInfo, UartMessage};
 use crate::service::parse_response::{
-    mqtt_info_request_uart_handler, mqtt_request_uart_handler, uart_response_mqtt_handler,
+    mqtt_info_request_uart_handler, mqtt_request_handler, mqtt_request_uart_handler,
+    uart_response_mqtt_handler,
 };
 use crate::service::{IntoMqttMessage, UartResponse};
 use crate::{MqttMessage, MqttMsgHandler, MqttResponseError, Result, APP_NAME};
@@ -71,14 +72,15 @@ impl HplcInfoNew for HplcInfoRequest {
     }
 }
 
+impl From<HplcInfoRequest> for ChipInfoRequest {
+    fn from(value: HplcInfoRequest) -> Self {
+        Self::new(value.start_index, value.node_number)
+    }
+}
+
 impl HplcInfo {
     pub fn mqtt_get_chip_info(message: MqttMessage, uart_msg_sender: &mpsc::Sender<UartMessage>) {
-        let req = serde_json::from_str::<HplcInfoRequest>(message.payload()).unwrap();
-        mqtt_request_uart_handler::<ChipInfoRequest>(
-            ChipInfoRequest::new(req.start_index, req.node_number),
-            message,
-            uart_msg_sender,
-        );
+        mqtt_request_handler::<ChipInfoRequest, HplcInfoRequest>(message, uart_msg_sender);
     }
 
     pub fn chip_info_response(
@@ -215,14 +217,18 @@ impl IntoMqttMessage for QueryNodeLineInfoResponse {
 
 type NodeLineInfoRequest = HplcInfoRequest;
 
+impl From<NodeLineInfoRequest> for QueryNodeLineInfoRequest {
+    fn from(value: NodeLineInfoRequest) -> Self {
+        Self::new(value.start_index, value.node_number)
+    }
+}
+
 impl HplcInfo {
     pub fn mqtt_get_node_line_info(
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) {
-        let req = serde_json::from_str::<NodeLineInfoRequest>(message.payload()).unwrap();
-        mqtt_request_uart_handler::<QueryNodeLineInfoRequest>(
-            QueryNodeLineInfoRequest::new(req.start_index, req.node_number),
+        mqtt_request_handler::<QueryNodeLineInfoRequest, NodeLineInfoRequest>(
             message,
             uart_msg_sender,
         );
@@ -295,12 +301,7 @@ impl IntoMqttMessage for IdInfoResponse {
 
 impl HplcInfo {
     pub fn mqtt_get_id_info(message: MqttMessage, uart_msg_sender: &mpsc::Sender<UartMessage>) {
-        let req = serde_json::from_str::<MqttIdInfoRequest>(message.payload()).unwrap();
-        mqtt_request_uart_handler::<IdInfoRequest>(
-            IdInfoRequest::from(req),
-            message,
-            uart_msg_sender,
-        );
+        mqtt_request_handler::<IdInfoRequest, MqttIdInfoRequest>(message, uart_msg_sender);
     }
 
     pub fn uart_id_info_response(
@@ -368,14 +369,18 @@ impl IntoMqttMessage for SlaveModuleIdResponse {
 
 type MqttSlaveModuleIdRequest = HplcInfoRequest;
 
+impl From<MqttSlaveModuleIdRequest> for SlaveModuleIdRequest {
+    fn from(value: MqttSlaveModuleIdRequest) -> Self {
+        Self::new(value.start_index, value.node_number)
+    }
+}
+
 impl HplcInfo {
     pub fn mqtt_get_slave_module_id_info(
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) {
-        let req = serde_json::from_str::<MqttSlaveModuleIdRequest>(message.payload()).unwrap();
-        mqtt_request_uart_handler::<SlaveModuleIdRequest>(
-            SlaveModuleIdRequest::new(req.start_index, req.node_number),
+        mqtt_request_handler::<SlaveModuleIdRequest, MqttSlaveModuleIdRequest>(
             message,
             uart_msg_sender,
         );
@@ -473,9 +478,7 @@ impl HplcInfo {
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) {
-        let req = serde_json::from_str::<MqttNetTopologyInfoRequest>(message.payload()).unwrap();
-        mqtt_request_uart_handler::<NetTopologyRequest>(
-            NetTopologyRequest::new(req.start_index, req.node_number),
+        mqtt_request_handler::<NetTopologyRequest, MqttNetTopologyInfoRequest>(
             message,
             uart_msg_sender,
         );

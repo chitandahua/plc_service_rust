@@ -8,7 +8,9 @@ use crate::protocol::app_data::{
 };
 use crate::protocol::Frame;
 
-use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_mqtt_handler};
+use crate::service::parse_response::{
+    mqtt_request_handler, mqtt_request_uart_handler, uart_response_mqtt_handler,
+};
 use crate::service::{IntoMqttMessage, RouteCtrl, UartResponse};
 
 use crate::{MqttResponseError, ReqInfo, Result, UartMessage, APP_NAME};
@@ -71,6 +73,12 @@ struct MqttIdentifyAreaSetRequest {
     switch: u8,
 }
 
+impl From<MqttIdentifyAreaSetRequest> for IdentifyAreaSetRequest {
+    fn from(req: MqttIdentifyAreaSetRequest) -> Self {
+        Self::new(req.switch)
+    }
+}
+
 impl IdentifyArea {
     pub fn new() -> Self {
         Self {
@@ -108,9 +116,7 @@ impl IdentifyArea {
         message: MqttMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) {
-        let request: MqttIdentifyAreaSetRequest = serde_json::from_str(message.payload()).unwrap();
-        mqtt_request_uart_handler::<IdentifyAreaSetRequest>(
-            IdentifyAreaSetRequest::new(request.switch),
+        mqtt_request_handler::<IdentifyAreaSetRequest, MqttIdentifyAreaSetRequest>(
             message,
             uart_msg_sender,
         );
@@ -167,8 +173,10 @@ impl IdentifyArea {
                 let mut info = identify_area.info.lock().unwrap();
                 if info.state == IdentifyAreaState::Running {
                     mqtt_msg_sender
-                        .send(anyhow::anyhow!("search meter already running")
-                            .into_mqtt_message(mqtt_req_info))
+                        .send(
+                            anyhow::anyhow!("search meter already running")
+                                .into_mqtt_message(mqtt_req_info),
+                        )
                         .unwrap();
                     return;
                 }
@@ -237,7 +245,14 @@ impl IdentifyArea {
                     }
                 }
 
-                tracing::info!("search meter {}", if info.state == IdentifyAreaState::Finished { "finished" } else { "canceled" });
+                tracing::info!(
+                    "search meter {}",
+                    if info.state == IdentifyAreaState::Finished {
+                        "finished"
+                    } else {
+                        "canceled"
+                    }
+                );
                 info.state = IdentifyAreaState::None;
             }
         });

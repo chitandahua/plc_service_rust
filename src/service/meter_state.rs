@@ -122,6 +122,8 @@ struct MeteringStateResponse {
     reset_module_count: u32,
     #[serde(rename = "resetRouterCount")]
     reset_router_count: u32,
+    #[serde(rename = "identifyAreaStat")]
+    identify_area_stat: u8,
 }
 
 impl MeteringStateResponse {
@@ -140,6 +142,7 @@ impl MeteringStateResponse {
             init_param_count: state.init_data_count,
             reset_module_count: state.reset_module_count,
             reset_router_count: state.reset_router_count,
+            identify_area_stat: response.work_status.area_identify_status,
         }
     }
 }

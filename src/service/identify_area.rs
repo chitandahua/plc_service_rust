@@ -9,7 +9,7 @@ use crate::protocol::app_data::{
 use crate::protocol::Frame;
 
 use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_mqtt_handler};
-use crate::service::{IntoMqttMessage, UartResponse};
+use crate::service::{IntoMqttMessage, RouteCtrl, UartResponse};
 
 use crate::{MqttResponseError, ReqInfo, Result, UartMessage, APP_NAME};
 
@@ -119,6 +119,7 @@ impl IdentifyArea {
 impl IdentifyArea {
     pub fn mqtt_active_slave_node_register(
         &self,
+        route_ctrl: &RouteCtrl,
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
@@ -131,11 +132,25 @@ impl IdentifyArea {
             MqttTopic::get_app(message.topic())
         );
 
-        mqtt_request_uart_handler::<ActiveNodeRegisterRequest>(
-            ActiveNodeRegisterRequest::try_from(request)?,
-            message,
-            uart_msg_sender,
-        );
+        match ActiveNodeRegisterRequest::try_from(request) {
+            Ok(request) => {
+                route_ctrl.auto_pause_metering(uart_msg_sender)?;
+                mqtt_request_uart_handler::<ActiveNodeRegisterRequest>(
+                    request,
+                    message,
+                    uart_msg_sender,
+                );
+            }
+            Err(e) => {
+                mqtt_msg_sender
+                    .send(
+                        anyhow::anyhow!(MqttResponseError::InvalidJson(e.to_string()))
+                            .into_mqtt_message(mqtt_req_info),
+                    )
+                    .unwrap();
+                return Err(e);
+            }
+        }
 
         // 等待回复
         let mut info = self.info.lock().unwrap();

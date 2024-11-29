@@ -23,7 +23,7 @@ const QUERY_NODE_NUMBER: u8 = 10;
 trait HplcInfoResponse {
     fn total_number(&self) -> u16;
     fn item_number(&self) -> u16;
-    fn extend(&mut self, item: Box<dyn Any + Send + Sync>);
+    fn extend(&mut self, item: Self);
 }
 
 // dyn HplcInfoResponse TODO 用不了downcast...  // :Any也不行
@@ -439,10 +439,9 @@ impl HplcInfoResponse for MqttNetTopologyInfoResponse {
         self.total_number
     }
 
-    fn extend(&mut self, item: Box<dyn Any + Send + Sync>) {
-        let data = item.downcast::<Self>().unwrap();
-        self.total_number = data.total_number;
-        self.net_topology_infos.extend(data.net_topology_infos);
+    fn extend(&mut self, item: Self) {
+        self.total_number = item.total_number;
+        self.net_topology_infos.extend(item.net_topology_infos);
     }
 }
 
@@ -539,7 +538,7 @@ impl HplcInfo {
             };
             let number = data.item_number();
             let items = info.items.as_mut().unwrap().downcast_mut::<R>().unwrap();
-            items.extend(data);
+            items.extend(*data);
 
             tracing::debug!(
                 "item number: {}, total number: {}",

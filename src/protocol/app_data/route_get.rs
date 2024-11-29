@@ -652,7 +652,7 @@ impl From<u8> for RunningStatus {
 #[derive(Debug, PartialEq)]
 pub struct WorkStatus {
     meter_status: u8,
-    area_identify_status: u8,
+    pub area_identify_status: u8,
     report_event_flag: u8,
     register_permit: u8,
     pub work_status: u8,

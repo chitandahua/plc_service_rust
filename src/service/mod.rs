@@ -56,6 +56,7 @@ pub use route_ctrl::RouteCtrl;
 
 mod route_data_request;
 pub use route_data_request::RouteDataRequest;
+use threadpool::ThreadPool;
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -78,6 +79,7 @@ pub struct ModuleService {
     pub meter_state: MeterState,
     pub identify_area: IdentifyArea,
     pub hplc_info: HplcInfo,
+    pub thread_pool: ThreadPool,
 }
 
 impl ModuleService {
@@ -102,6 +104,7 @@ impl ModuleService {
             meter_state: MeterState::new(),
             identify_area: IdentifyArea::new(),
             hplc_info: HplcInfo::new(),
+            thread_pool: ThreadPool::new(2),
         })
     }
 

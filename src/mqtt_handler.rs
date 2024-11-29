@@ -398,9 +398,11 @@ impl MqttMsgHandler {
                         }
                         MqttTopicType::EnableSearchMeter => {
                             services.identify_area.mqtt_active_slave_node_register(
+                                &services.route_ctrl,
                                 message,
                                 &mqtt_msg_sender,
                                 &uart_msg_sender,
+                                &services.thread_pool,
                             )
                         }
                         MqttTopicType::DisableSearchMeter => {

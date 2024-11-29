@@ -15,11 +15,20 @@ use crate::{MqttResponseError, ReqInfo, Result, UartMessage, APP_NAME};
 
 use serde::{Deserialize, Serialize};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
+use threadpool::ThreadPool;
+
+#[derive(Debug, PartialEq)]
+enum IdentifyAreaState {
+    Running,
+    Finished,
+    Canceled,
+    None,
+}
 
 struct IdentifyAreaInfo {
     report_info: Vec<ReportNodeInfoAndDeviceType>,
     result: Option<Result<()>>,
-    finished: bool,
+    state: IdentifyAreaState,
 }
 
 #[derive(Clone)]
@@ -68,7 +77,7 @@ impl IdentifyArea {
             info: Arc::new(Mutex::new(IdentifyAreaInfo {
                 report_info: Vec::new(),
                 result: None,
-                finished: false,
+                state: IdentifyAreaState::None,
             })),
             cond: Arc::new(Condvar::new()),
         }
@@ -123,6 +132,7 @@ impl IdentifyArea {
         message: MqttMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
+        thread_pool: &ThreadPool,
     ) -> Result<()> {
         let request: MqttEnableSearchMeter = serde_json::from_str(message.payload()).unwrap();
         let mqtt_req_info = message.to_mqtt_req_info();
@@ -132,14 +142,10 @@ impl IdentifyArea {
             MqttTopic::get_app(message.topic())
         );
 
-        match ActiveNodeRegisterRequest::try_from(request) {
+        let request = match ActiveNodeRegisterRequest::try_from(request) {
             Ok(request) => {
                 route_ctrl.auto_pause_metering(uart_msg_sender)?;
-                mqtt_request_uart_handler::<ActiveNodeRegisterRequest>(
-                    request,
-                    message,
-                    uart_msg_sender,
-                );
+                request
             }
             Err(e) => {
                 mqtt_msg_sender
@@ -150,68 +156,92 @@ impl IdentifyArea {
                     .unwrap();
                 return Err(e);
             }
-        }
+        };
 
-        // 等待回复
-        let mut info = self.info.lock().unwrap();
-        info.finished = false;
-        info = self
-            .cond
-            .wait_while(info, |info| info.result.is_none())
-            .unwrap();
-        let result = info.result.take().unwrap();
-        let is_err = result.is_err();
-        mqtt_msg_sender
-            .send(result.into_mqtt_message(mqtt_req_info))
-            .unwrap();
-        if is_err {
-            return Err(anyhow::anyhow!("enable search meter failed"));
-        }
-
-        // 等待上报结束 or 超时
-        // TODO 工作标志若为仍在工作中 则继续等待？
-        while !info.finished {
-            let result = self
-                .cond
-                .wait_timeout_while(info, std::time::Duration::from_secs(10 * 60), |info| {
-                    info.report_info.is_empty() && info.result.is_none()
-                })
-                .unwrap();
-            info = result.0;
-            if result.1.timed_out() {
-                let frame = Frame::new_request(None, RunningStatusRequest);
-                let req_info = ReqInfo::new(&frame, None);
-                uart_msg_sender
-                    .send(UartMessage::new(req_info, frame))
-                    .unwrap();
-
+        thread_pool.execute({
+            let identify_area = self.clone();
+            let mqtt_msg_sender = mqtt_msg_sender.clone();
+            let uart_msg_sender = uart_msg_sender.clone();
+            move || {
                 // 等待回复
-                info = self
+                let mut info = identify_area.info.lock().unwrap();
+                if info.state == IdentifyAreaState::Running {
+                    mqtt_msg_sender
+                        .send(anyhow::anyhow!("search meter already running")
+                            .into_mqtt_message(mqtt_req_info))
+                        .unwrap();
+                    return;
+                }
+                info.state = IdentifyAreaState::Running;
+                mqtt_request_uart_handler::<ActiveNodeRegisterRequest>(
+                    request,
+                    message,
+                    &uart_msg_sender,
+                );
+
+                info = identify_area
                     .cond
                     .wait_while(info, |info| info.result.is_none())
                     .unwrap();
-                if let Err(e) = info.result.take().unwrap() {
-                    tracing::error!(cause = ?e, "get running status failed");
-                }
-            } else if !info.report_info.is_empty() {
-                let body = std::mem::take(&mut info.report_info)
-                    .into_iter()
-                    .map(MqttSearchMeterResponse::from)
-                    .collect::<Vec<_>>();
+                let result = info.result.take().unwrap();
+                let err = result.as_ref().err().map(|e| e.to_string());
                 mqtt_msg_sender
-                    .send(MqttMessage::new(
-                        report_topic.clone(),
-                        MqttPayload::new_with_body(Some(PayloadBody::Nested {
-                            body: serde_json::to_value(body).unwrap(),
-                        })),
-                    ))
+                    .send(result.into_mqtt_message(mqtt_req_info))
                     .unwrap();
-            } else {
-                info.result = None;
-            }
-        }
+                if err.is_some() {
+                    tracing::error!(cause = ?err, "active slave node register failed");
+                    info.state = IdentifyAreaState::None;
+                    return;
+                }
 
-        tracing::info!("enable search meter finished");
+                // 等待上报结束 or 超时
+                // TODO 工作标志若为仍在工作中 则继续等待？
+                while info.state == IdentifyAreaState::Running {
+                    let result = identify_area
+                        .cond
+                        .wait_timeout_while(info, std::time::Duration::from_secs(10 * 60), |info| {
+                            info.report_info.is_empty() && info.result.is_none()
+                        })
+                        .unwrap();
+                    info = result.0;
+                    if result.1.timed_out() {
+                        let frame = Frame::new_request(None, RunningStatusRequest);
+                        let req_info = ReqInfo::new(&frame, None);
+                        uart_msg_sender
+                            .send(UartMessage::new(req_info, frame))
+                            .unwrap();
+
+                        // 等待回复
+                        info = identify_area
+                            .cond
+                            .wait_while(info, |info| info.result.is_none())
+                            .unwrap();
+                        if let Err(e) = info.result.take().unwrap() {
+                            tracing::error!(cause = ?e, "get running status failed");
+                        }
+                    } else if !info.report_info.is_empty() {
+                        let body = std::mem::take(&mut info.report_info)
+                            .into_iter()
+                            .map(MqttSearchMeterResponse::from)
+                            .collect::<Vec<_>>();
+                        mqtt_msg_sender
+                            .send(MqttMessage::new(
+                                report_topic.clone(),
+                                MqttPayload::new_with_body(Some(PayloadBody::Nested {
+                                    body: serde_json::to_value(body).unwrap(),
+                                })),
+                            ))
+                            .unwrap();
+                    } else {
+                        info.result = None;
+                    }
+                }
+
+                tracing::info!("search meter {}", if info.state == IdentifyAreaState::Finished { "finished" } else { "canceled" });
+                info.state = IdentifyAreaState::None;
+            }
+        });
+
         Ok(())
     }
 
@@ -221,10 +251,10 @@ impl IdentifyArea {
         self.cond.notify_one();
     }
 
-    pub fn notify_finished(&self, result: Result<()>) {
+    fn notify_state(&self, result: Result<()>, state: IdentifyAreaState) {
         let mut info = self.info.lock().unwrap();
         info.result = Some(result);
-        info.finished = true;
+        info.state = state;
         self.cond.notify_one();
     }
 
@@ -260,7 +290,7 @@ impl IdentifyArea {
             Ok(status) => {
                 if status.running_status.work_flag == 0 {
                     tracing::debug!("search meter finished");
-                    self.notify_finished(Ok(()))
+                    self.notify_state(Ok(()), IdentifyAreaState::Finished);
                 } else {
                     self.notify(Ok(()))
                 }
@@ -272,9 +302,11 @@ impl IdentifyArea {
     }
 
     pub fn uart_stop_slave_node_register(
+        &self,
         message: UartMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
+        self.notify_state(Ok(()), IdentifyAreaState::Canceled);
         uart_response_mqtt_handler::<ConfirmResponse>(message, mqtt_msg_sender)
     }
 }
@@ -325,9 +357,15 @@ impl IdentifyArea {
 
         let work_status = ReportWorkStatus::try_from(message.frame.into_app_data())?;
         // 搜表结束通知
-        if work_status.work_status_type == WorkStatusType::Search {
-            tracing::debug!("report search meter finished");
-            self.notify_finished(Ok(()));
+        match work_status.work_status_type {
+            WorkStatusType::Search => {
+                tracing::debug!("report search meter finished");
+                self.notify_state(Ok(()), IdentifyAreaState::Finished);
+            }
+            WorkStatusType::IdentifyArea => {
+                tracing::debug!("report identify area finished");
+            }
+            _ => {}
         }
         Ok(())
     }

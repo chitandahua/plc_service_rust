@@ -254,7 +254,9 @@ impl UartMsgHandler {
                 .identify_area
                 .uart_active_slave_node_register(message)?,
             RouteSet::StopNodeRegister => {
-                IdentifyArea::uart_stop_slave_node_register(message, &self.mqtt_msg_sender)?;
+                self.services
+                    .identify_area
+                    .uart_stop_slave_node_register(message, &self.mqtt_msg_sender)?;
             }
         }
         Ok(())

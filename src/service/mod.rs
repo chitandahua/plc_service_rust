@@ -123,6 +123,7 @@ impl ModuleService {
         MeterState::init(mqtt_msg_handler);
         IdentifyArea::init(mqtt_msg_handler);
         ControlCmd::init(mqtt_msg_handler);
+        PlcInit::init(mqtt_msg_handler);
     }
 }
 

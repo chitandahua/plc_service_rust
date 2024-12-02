@@ -354,9 +354,21 @@ impl UartMsgHandler {
         }
     }
 
+    fn uart_init_operation_handler(&mut self, message: UartMessage) -> Result<()> {
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        let fn_num = InitOperation::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
+        match fn_num {
+            InitOperation::Data => PlcInit::uart_data_init_response(message, &self.mqtt_msg_sender)?,
+            _ => unreachable!(),
+        }
+        Ok(())
+    }
+
     fn uart_mqtt_handler(&mut self, message: UartMessage) -> Result<()> {
         let afn = message.req_info.frame_key().afn();
         match afn {
+            Afn::Init => self.uart_init_operation_handler(message),
             Afn::DataForward => self.uart_data_forward_handler(message),
             Afn::CtrlCmd => self.uart_ctrl_cmd_handler(message),
             Afn::QueryData => self.uart_query_data_handler(message),

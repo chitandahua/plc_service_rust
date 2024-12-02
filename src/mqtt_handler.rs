@@ -1,7 +1,7 @@
 use crate::mqtt_message::Status;
 use crate::service::{
     Broadcast, ControlCmd, DebugMethod, HplcInfo, IdentifyArea, MasterAddress, ModuleInfo,
-    ModuleService,
+    ModuleService, PlcInit,
 };
 use crate::{schema_check, MqttHandler, MqttResponseError, PlcDevice, Result};
 use crate::{MqttMessage, UartMessage};
@@ -136,6 +136,8 @@ pub enum MqttTopicType {
     // 控制命令
     HplcFrequency,
     RefuseSlaveReport,
+    // 初始化
+    DataInit,
 }
 
 struct MqttTopicFilter {
@@ -423,6 +425,10 @@ impl MqttMsgHandler {
                         }
                         MqttTopicType::GetNetworkSize => {
                             HplcInfo::mqtt_get_network_size(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::DataInit => {
+                            PlcInit::mqtt_data_init(message, &uart_msg_sender);
                             Ok(())
                         }
                     };

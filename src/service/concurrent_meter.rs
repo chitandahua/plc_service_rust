@@ -14,7 +14,7 @@ use crate::mqtt_topic::MqttTopic;
 use crate::protocol::app_data::{Address, ConcurrentReadMeterRequest, ConcurrentReadMeterResponse};
 use crate::protocol::{AddressField, Frame};
 use crate::request_info::{MqttReqInfo, ReqInfo, UartMessage};
-use crate::service::parse_response::uart_response_mqtt_handler;
+use crate::service::parse_response::uart_response_handler;
 use crate::service::IntoMqttMessage;
 use crate::{MqttMessage, MqttMsgHandler, MqttResponseError, Result, APP_NAME};
 
@@ -69,7 +69,7 @@ enum ConcurrentMeterError {
     MeterReading,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 struct SamplePayload {
     #[serde(rename = "taskID")]
     task_id: String,
@@ -80,14 +80,14 @@ struct SamplePayload {
     data: String,
 }
 
-impl IntoMqttMessage for ConcurrentReadMeterResponse {
+impl IntoMqttMessage for SamplePayload {
     fn into_mqtt_message(self, mut mqtt_req_info: MqttReqInfo) -> MqttMessage {
         let mut extra_data = mqtt_req_info
             .get_extra_data()
             .unwrap()
             .downcast::<SamplePayload>()
             .unwrap();
-        extra_data.data = hex::encode(self.message);
+        extra_data.data = self.data;
         match extra_data.data.is_empty() {
             true => MqttMessage::new_with_req_info_status_reason(
                 mqtt_req_info,
@@ -98,6 +98,15 @@ impl IntoMqttMessage for ConcurrentReadMeterResponse {
                 mqtt_req_info,
                 Some(PayloadBody::Flat(serde_json::to_value(extra_data).unwrap())),
             ),
+        }
+    }
+}
+
+impl From<ConcurrentReadMeterResponse> for SamplePayload {
+    fn from(response: ConcurrentReadMeterResponse) -> Self {
+        SamplePayload {
+            data: hex::encode(response.message),
+            ..Default::default()
         }
     }
 }
@@ -344,7 +353,10 @@ impl ConcurrentMeter {
         concurrent_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
         let acq_addr = Self::concurrent_acq_addr(&message);
-        uart_response_mqtt_handler::<ConcurrentReadMeterResponse>(message, mqtt_msg_sender)?;
+        uart_response_handler::<ConcurrentReadMeterResponse, SamplePayload>(
+            message,
+            mqtt_msg_sender,
+        )?;
         self.handle_next_request(acq_addr, master_address, concurrent_msg_sender)
     }
 }

@@ -12,6 +12,15 @@ pub enum UartResponse<T> {
     Deny(DenyResponse),
 }
 
+impl<T> UartResponse<T> {
+    fn map<U>(self, f: impl FnOnce(T) -> U) -> UartResponse<U> {
+        match self {
+            UartResponse::Normal(t) => UartResponse::Normal(f(t)),
+            UartResponse::Deny(t) => UartResponse::Deny(t),
+        }
+    }
+}
+
 impl<T> TryFrom<Frame> for UartResponse<T>
 where
     T: TryFrom<AppData, Error = crate::Error>,
@@ -112,13 +121,14 @@ pub(crate) fn mqtt_info_request_uart_handler<T: Into<AppData>>(
         .unwrap();
 }
 
-pub(crate) fn uart_response_mqtt_handler<
-    T: IntoMqttMessage + TryFrom<AppData, Error = crate::Error>,
+pub(crate) fn uart_response_handler<
+    T: TryFrom<AppData, Error = crate::Error>,
+    M: IntoMqttMessage + From<T>,
 >(
     message: UartMessage,
     mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
 ) -> Result<()> {
-    let response = UartResponse::<T>::try_from(message.frame)?;
+    let response = UartResponse::<T>::try_from(message.frame)?.map(M::from);
     let mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
     let response_msg = response.into_mqtt_message(mqtt_req_info);
     mqtt_msg_sender.send(response_msg)?;

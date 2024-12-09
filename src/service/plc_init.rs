@@ -8,7 +8,7 @@ use crate::protocol::Address;
 use crate::request_info::UartMessage;
 use crate::{MeterState, ModuleInfo, ModuleService, MqttMessage, MqttMsgHandler, Result, APP_NAME};
 
-use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_mqtt_handler};
+use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_handler};
 enum InitEvent {
     Result(Result<()>),
     Address(Address),
@@ -190,6 +190,6 @@ impl PlcInit {
         message: UartMessage,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<ConfirmResponse>(message, sender)
+        uart_response_handler::<ConfirmResponse, ()>(message, sender)
     }
 }

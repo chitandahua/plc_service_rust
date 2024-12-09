@@ -8,8 +8,7 @@ use crate::protocol::app_data::{
 };
 use crate::request_info::MqttReqInfo;
 use crate::service::parse_response::{
-    mqtt_info_request_uart_handler, mqtt_request_handler, mqtt_request_uart_handler,
-    uart_response_mqtt_handler,
+    mqtt_info_request_uart_handler, mqtt_request_uart_handler, uart_response_handler,
 };
 use crate::service::{IntoMqttMessage, UartResponse};
 use crate::{protocol::app_data::Address, MqttMsgHandler, Result, UartMessage, APP_NAME};
@@ -57,12 +56,6 @@ impl IntoMqttMessage for MqttAddressGetResponse {
     }
 }
 
-impl IntoMqttMessage for MasterAddressResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttAddressGetResponse::from(self).into_mqtt_message(mqtt_req_info)
-    }
-}
-
 impl MasterAddress {
     pub fn new() -> Self {
         MasterAddress {
@@ -107,7 +100,10 @@ impl MasterAddress {
         message: UartMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<MasterAddressResponse>(message, mqtt_msg_sender)
+        uart_response_handler::<MasterAddressResponse, MqttAddressGetResponse>(
+            message,
+            mqtt_msg_sender,
+        )
     }
 
     pub fn mqtt_set_address(message: MqttMessage, uart_msg_sender: &mpsc::Sender<UartMessage>) {
@@ -157,7 +153,7 @@ impl MasterAddress {
                         .downcast::<Address>()
                         .unwrap();
                 }
-                response.into_mqtt_message(mqtt_req_info)
+                ().into_mqtt_message(mqtt_req_info)
             }
             UartResponse::Deny(response) => response.into_mqtt_message(mqtt_req_info),
         };

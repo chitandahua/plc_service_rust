@@ -11,8 +11,7 @@ use crate::protocol::app_data::{
 use crate::protocol::{Address, Frame};
 use crate::request_info::{MqttReqInfo, UartMessage};
 use crate::service::parse_response::{
-    mqtt_info_request_uart_handler, mqtt_request_uart_handler, uart_response_mqtt_handler,
-    UartResponse,
+    mqtt_info_request_uart_handler, mqtt_request_uart_handler, uart_response_handler, UartResponse,
 };
 use crate::service::IntoMqttMessage;
 use crate::{MqttMessage, MqttMsgHandler, ReqInfo, Result, APP_NAME};
@@ -63,7 +62,7 @@ impl ModuleInfo {
         message: UartMessage,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<app_data::ModuleInfoResponse>(message, sender)
+        uart_response_handler::<app_data::ModuleInfoResponse, ModuleInfoResponse>(message, sender)
     }
 
     pub fn get_module_info(
@@ -96,7 +95,7 @@ impl ModuleInfo {
         message: UartMessage,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<MasterIdInfoResponse>(message, sender)
+        uart_response_handler::<MasterIdInfoResponse, ModeIdInfoResponse>(message, sender)
     }
 
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
@@ -140,12 +139,6 @@ impl IntoMqttMessage for HplcFrequencyResponse {
     }
 }
 
-impl IntoMqttMessage for app_data::GetHplcFreqResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        HplcFrequencyResponse::from(self).into_mqtt_message(mqtt_req_info)
-    }
-}
-
 impl ModuleInfo {
     pub fn mqtt_get_hplc_freq(message: MqttMessage, uart_msg_sender: &mpsc::Sender<UartMessage>) {
         mqtt_request_uart_handler::<app_data::GetHplcFreqRequest>(
@@ -159,7 +152,9 @@ impl ModuleInfo {
         message: UartMessage,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<app_data::GetHplcFreqResponse>(message, sender)
+        uart_response_handler::<app_data::GetHplcFreqResponse, HplcFrequencyResponse>(
+            message, sender,
+        )
     }
 }
 
@@ -213,10 +208,9 @@ impl From<app_data::ModuleInfoResponse> for ModuleInfoResponse {
     }
 }
 
-impl IntoMqttMessage for app_data::ModuleInfoResponse {
+impl IntoMqttMessage for ModuleInfoResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        let response = ModuleInfoResponse::from(self);
-        let payload = serde_json::to_value(response).unwrap();
+        let payload = serde_json::to_value(self).unwrap();
         let payload = MqttPayload::new_with_token(
             mqtt_req_info.token(),
             Some(PayloadBody::Nested { body: payload }),
@@ -254,12 +248,12 @@ impl From<MasterIdInfoResponse> for ModeIdInfoResponse {
     }
 }
 
-impl IntoMqttMessage for MasterIdInfoResponse {
+impl IntoMqttMessage for ModeIdInfoResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
         MqttMessage::new_with_req_info_body(
             mqtt_req_info,
             Some(PayloadBody::Nested {
-                body: serde_json::to_value(ModeIdInfoResponse::from(self)).unwrap(),
+                body: serde_json::to_value(self).unwrap(),
             }),
         )
     }

@@ -7,7 +7,7 @@ use crate::protocol::app_data::{
 };
 
 use crate::request_info::UartMessage;
-use crate::service::parse_response::{mqtt_request_handler, uart_response_mqtt_handler};
+use crate::service::parse_response::{mqtt_request_handler, uart_response_handler};
 use crate::{MqttMessage, MqttMsgHandler, Result, APP_NAME};
 
 use crate::service::{IntoMqttMessage, MqttReqInfo, RouteCtrl};
@@ -42,13 +42,11 @@ impl From<BroadcastDelayResponse> for MqttBroadCastDelayResponse {
     }
 }
 
-impl IntoMqttMessage for BroadcastDelayResponse {
+impl IntoMqttMessage for MqttBroadCastDelayResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
         MqttMessage::new_with_req_info_body(
             mqtt_req_info,
-            Some(PayloadBody::Flat(
-                serde_json::to_value(MqttBroadCastDelayResponse::from(self)).unwrap(),
-            )),
+            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
         )
     }
 }
@@ -102,7 +100,10 @@ impl Broadcast {
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
         route_ctrl.uart_response_update_resume_timer(uart_msg_sender);
-        uart_response_mqtt_handler::<BroadcastDelayResponse>(message, mqtt_msg_sender)
+        uart_response_handler::<BroadcastDelayResponse, MqttBroadCastDelayResponse>(
+            message,
+            mqtt_msg_sender,
+        )
     }
 
     pub fn mqtt_broadcast_cmd(
@@ -129,6 +130,6 @@ impl Broadcast {
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
         route_ctrl.uart_response_update_resume_timer(uart_msg_sender);
-        uart_response_mqtt_handler::<ConfirmResponse>(message, mqtt_msg_sender)
+        uart_response_handler::<ConfirmResponse, ()>(message, mqtt_msg_sender)
     }
 }

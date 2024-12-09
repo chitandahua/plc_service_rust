@@ -131,6 +131,25 @@ pub trait IntoMqttMessage {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage;
 }
 
+// 会冲突 不能在此基础上再覆盖 rustc --explain E0119
+//impl<T> IntoMqttMessage for T
+//where
+//    T: serde::ser::Serialize,
+//{
+//    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+//        MqttMessage::new_with_req_info_body(
+//            mqtt_req_info,
+//            Some(PayloadBody::Flat
+//                serde_json::to_value(self).unwrap(),
+//            )),
+//        )
+//    }
+//}
+
+impl From<ConfirmResponse> for () {
+    fn from(_value: ConfirmResponse) -> Self {}
+}
+
 impl IntoMqttMessage for () {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
         MqttMessage::new_with_req_info_body(mqtt_req_info, None)
@@ -152,12 +171,6 @@ where
             Ok(t) => t.into_mqtt_message(mqtt_req_info),
             Err(e) => e.into_mqtt_message(mqtt_req_info),
         }
-    }
-}
-
-impl IntoMqttMessage for ConfirmResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        ().into_mqtt_message(mqtt_req_info)
     }
 }
 

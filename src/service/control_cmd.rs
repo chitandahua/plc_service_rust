@@ -6,7 +6,7 @@ use crate::protocol::app_data::{ConfirmResponse, HplcFrequencySetRequest, SlaveR
 use crate::request_info::UartMessage;
 use crate::{MqttMessage, MqttMsgHandler, Result, APP_NAME};
 
-use crate::service::parse_response::{mqtt_request_handler, uart_response_mqtt_handler};
+use crate::service::parse_response::{mqtt_request_handler, uart_response_handler};
 
 use std::sync::mpsc;
 
@@ -74,13 +74,13 @@ impl ControlCmd {
         message: UartMessage,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<ConfirmResponse>(message, sender)
+        uart_response_handler::<ConfirmResponse, ()>(message, sender)
     }
 
     pub fn uart_refuse_slave_report_response(
         message: UartMessage,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<ConfirmResponse>(message, sender)
+        uart_response_handler::<ConfirmResponse, ()>(message, sender)
     }
 }

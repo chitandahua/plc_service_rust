@@ -14,7 +14,7 @@ use crate::protocol::AppData;
 use crate::request_info::{MqttReqInfo, UartMessage};
 use crate::service::parse_response::{
     mqtt_info_request_uart_handler, mqtt_request_handler, mqtt_request_uart_handler,
-    uart_response_mqtt_handler,
+    uart_response_handler,
 };
 use crate::service::{IntoMqttMessage, UartResponse};
 use crate::{MqttMessage, MqttMsgHandler, MqttResponseError, Result, APP_NAME};
@@ -87,7 +87,7 @@ impl HplcInfo {
         message: UartMessage,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<ChipInfoResponse>(message, sender)
+        uart_response_handler::<ChipInfoResponse, MqttChipInfoResponse>(message, sender)
     }
 
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
@@ -163,12 +163,12 @@ impl From<ChipInfoResponse> for MqttChipInfoResponse {
     }
 }
 
-impl IntoMqttMessage for ChipInfoResponse {
+impl IntoMqttMessage for MqttChipInfoResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
         MqttMessage::new_with_req_info_body(
             mqtt_req_info,
             Some(PayloadBody::Nested {
-                body: serde_json::to_value(MqttChipInfoResponse::from(self)).unwrap(),
+                body: serde_json::to_value(self).unwrap(),
             }),
         )
     }
@@ -204,12 +204,12 @@ impl From<QueryNodeLineInfoResponse> for MqttNodeLineInfoResponse {
     }
 }
 
-impl IntoMqttMessage for QueryNodeLineInfoResponse {
+impl IntoMqttMessage for MqttNodeLineInfoResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
         MqttMessage::new_with_req_info_body(
             mqtt_req_info,
             Some(PayloadBody::Nested {
-                body: serde_json::to_value(MqttNodeLineInfoResponse::from(self)).unwrap(),
+                body: serde_json::to_value(self).unwrap(),
             }),
         )
     }
@@ -238,7 +238,9 @@ impl HplcInfo {
         message: UartMessage,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<QueryNodeLineInfoResponse>(message, sender)
+        uart_response_handler::<QueryNodeLineInfoResponse, MqttNodeLineInfoResponse>(
+            message, sender,
+        )
     }
 }
 
@@ -288,12 +290,12 @@ impl From<IdInfoResponse> for MqttIdInfoResponse {
     }
 }
 
-impl IntoMqttMessage for IdInfoResponse {
+impl IntoMqttMessage for MqttIdInfoResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
         MqttMessage::new_with_req_info_body(
             mqtt_req_info,
             Some(PayloadBody::Nested {
-                body: serde_json::to_value(MqttIdInfoResponse::from(self)).unwrap(),
+                body: serde_json::to_value(self).unwrap(),
             }),
         )
     }
@@ -308,7 +310,7 @@ impl HplcInfo {
         message: UartMessage,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<IdInfoResponse>(message, sender)
+        uart_response_handler::<IdInfoResponse, MqttIdInfoResponse>(message, sender)
     }
 }
 
@@ -356,12 +358,12 @@ impl From<SlaveModuleIdResponse> for MqttSlaveModuleIdInfoResponse {
     }
 }
 
-impl IntoMqttMessage for SlaveModuleIdResponse {
+impl IntoMqttMessage for MqttSlaveModuleIdInfoResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
         MqttMessage::new_with_req_info_body(
             mqtt_req_info,
             Some(PayloadBody::Nested {
-                body: serde_json::to_value(MqttSlaveModuleIdInfoResponse::from(self)).unwrap(),
+                body: serde_json::to_value(self).unwrap(),
             }),
         )
     }
@@ -390,7 +392,9 @@ impl HplcInfo {
         message: UartMessage,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<SlaveModuleIdResponse>(message, sender)
+        uart_response_handler::<SlaveModuleIdResponse, MqttSlaveModuleIdInfoResponse>(
+            message, sender,
+        )
     }
 }
 
@@ -459,12 +463,6 @@ impl IntoMqttMessage for MqttNetTopologyInfoResponse {
     }
 }
 
-impl IntoMqttMessage for NetTopologyResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttNetTopologyInfoResponse::from(self).into_mqtt_message(mqtt_req_info)
-    }
-}
-
 impl From<HplcInfoRequest> for NetTopologyRequest {
     fn from(value: HplcInfoRequest) -> Self {
         Self::new(value.start_index, value.node_number)
@@ -488,7 +486,7 @@ impl HplcInfo {
         message: UartMessage,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<NetTopologyResponse>(message, sender)
+        uart_response_handler::<NetTopologyResponse, MqttNetTopologyInfoResponse>(message, sender)
     }
 }
 
@@ -617,13 +615,11 @@ impl From<MultipleNetResponse> for MqttMultipleNetInfoResponse {
     }
 }
 
-impl IntoMqttMessage for MultipleNetResponse {
+impl IntoMqttMessage for MqttMultipleNetInfoResponse {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
         MqttMessage::new_with_req_info_body(
             mqtt_req_info,
-            Some(PayloadBody::Flat(
-                serde_json::to_value(MqttMultipleNetInfoResponse::from(self)).unwrap(),
-            )),
+            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
         )
     }
 }
@@ -644,7 +640,7 @@ impl HplcInfo {
         message: UartMessage,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<MultipleNetResponse>(message, sender)
+        uart_response_handler::<MultipleNetResponse, MqttMultipleNetInfoResponse>(message, sender)
     }
 }
 
@@ -671,12 +667,6 @@ impl IntoMqttMessage for MqttNetworkSizeResponse {
     }
 }
 
-impl IntoMqttMessage for NetworkSizeResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttNetworkSizeResponse::from(self).into_mqtt_message(mqtt_req_info)
-    }
-}
-
 impl HplcInfo {
     pub fn mqtt_get_network_size(
         message: MqttMessage,
@@ -693,6 +683,6 @@ impl HplcInfo {
         message: UartMessage,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<NetworkSizeResponse>(message, sender)
+        uart_response_handler::<NetworkSizeResponse, MqttNetworkSizeResponse>(message, sender)
     }
 }

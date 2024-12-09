@@ -9,7 +9,7 @@ use crate::protocol::app_data::{
 use crate::protocol::Frame;
 
 use crate::service::parse_response::{
-    mqtt_request_handler, mqtt_request_uart_handler, uart_response_mqtt_handler,
+    mqtt_request_handler, mqtt_request_uart_handler, uart_response_handler,
 };
 use crate::service::{IntoMqttMessage, RouteCtrl, UartResponse};
 
@@ -126,7 +126,7 @@ impl IdentifyArea {
         message: UartMessage,
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
-        uart_response_mqtt_handler::<ConfirmResponse>(message, mqtt_msg_sender)
+        uart_response_handler::<ConfirmResponse, ()>(message, mqtt_msg_sender)
     }
 }
 
@@ -322,7 +322,7 @@ impl IdentifyArea {
         mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
         self.notify_state(Ok(()), IdentifyAreaState::Canceled);
-        uart_response_mqtt_handler::<ConfirmResponse>(message, mqtt_msg_sender)
+        uart_response_handler::<ConfirmResponse, ()>(message, mqtt_msg_sender)
     }
 }
 

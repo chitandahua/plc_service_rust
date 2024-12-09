@@ -2,16 +2,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::Duration;
 
+use crate::mqtt_handler::MqttTopicType;
 use crate::protocol::app_data::{ConfirmResponse, InitOperation, InitRequest};
 use crate::protocol::Address;
 use crate::request_info::UartMessage;
-use crate::{ModuleService, Result, APP_NAME, MqttMessage, MqttMsgHandler};
-use crate::mqtt_handler::MqttTopicType;
-use super::{MeterState, ModuleInfo};
+use crate::{MeterState, ModuleInfo, ModuleService, MqttMessage, MqttMsgHandler, Result, APP_NAME};
 
-use crate::service::parse_response::{
-    mqtt_request_uart_handler, uart_response_mqtt_handler,
-};
+use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_mqtt_handler};
 enum InitEvent {
     Result(Result<()>),
     Address(Address),
@@ -172,19 +169,21 @@ pub enum PlcInitError {
     InvalidEvent,
 }
 
-
 impl PlcInit {
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
         use crate::config::SCHEMA_PATH;
         use crate::schema_check;
         let topic = format!("{}{}{}", "+/set/request/", APP_NAME, "/dataInit");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("data_init_schema.json")).ok();
+        let schema = schema_check::parse_schema(SCHEMA_PATH.join("data_init_schema.json")).ok();
         mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::DataInit, schema);
     }
 
     pub fn mqtt_data_init(message: MqttMessage, uart_msg_sender: &mpsc::Sender<UartMessage>) {
-        mqtt_request_uart_handler::<InitRequest>(InitRequest::new(InitOperation::Data), message, uart_msg_sender);
+        mqtt_request_uart_handler::<InitRequest>(
+            InitRequest::new(InitOperation::Data),
+            message,
+            uart_msg_sender,
+        );
     }
 
     pub fn uart_data_init_response(

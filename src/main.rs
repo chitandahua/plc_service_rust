@@ -34,7 +34,7 @@ fn get_log_level(log_level: &str) -> String {
 
 fn init_log(args: &Args) -> Result<()> {
     debug!("init log");
-    let identity = std::ffi::CStr::from_bytes_with_nul(b"JDIoT\0").unwrap();
+    let identity = c"JDIoT";
     let (options, facility) = Default::default();
 
     let filter_layer = args

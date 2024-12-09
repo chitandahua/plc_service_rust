@@ -8,8 +8,8 @@ use crate::protocol::app_data::{
 };
 use crate::request_info::{MqttReqInfo, ReqInfo};
 use crate::service::{
-    Broadcast, ControlCmd, DebugMethod, EventReport, HplcInfo, IdentifyArea, MeterState,
-    ModuleService, PlcInit, RouteDataRequest,
+    Broadcast, ControlCmd, DebugMethod, EventReport, HplcInfo, IdentifyArea, MasterAddress,
+    MeterState, ModuleService, PlcInit, RouteDataRequest,
 };
 use crate::{ModuleInfo, MqttMessage, MqttPayload};
 use crate::{MqttResponseError, Result, UartHandler, UartMessage};
@@ -195,6 +195,9 @@ impl UartMsgHandler {
             QueryData::HplcFrequency => {
                 ModuleInfo::uart_get_hplc_freq_response(message, &self.mqtt_msg_sender)
             }
+            QueryData::MasterAddress => {
+                MasterAddress::uart_get_address(message, &self.mqtt_msg_sender)
+            }
         }
     }
 
@@ -359,7 +362,9 @@ impl UartMsgHandler {
         let fn_num = InitOperation::try_from(fn_num)
             .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
         match fn_num {
-            InitOperation::Data => PlcInit::uart_data_init_response(message, &self.mqtt_msg_sender)?,
+            InitOperation::Data => {
+                PlcInit::uart_data_init_response(message, &self.mqtt_msg_sender)?
+            }
             _ => unreachable!(),
         }
         Ok(())

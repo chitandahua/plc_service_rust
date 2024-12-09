@@ -34,7 +34,8 @@ pub use meter_reading::{ConcurrentReadMeterRequest, ConcurrentReadMeterResponse,
 mod query_data;
 pub use query_data::{
     BroadcastDelayRequest, BroadcastDelayResponse, GetHplcFreqRequest, GetHplcFreqResponse,
-    MasterIdInfoRequest, MasterIdInfoResponse, ModuleInfoRequest, ModuleInfoResponse, QueryData,
+    MasterAddressRequest, MasterAddressResponse, MasterIdInfoRequest, MasterIdInfoResponse,
+    ModuleInfoRequest, ModuleInfoResponse, QueryData,
 };
 
 mod route_data_forward;

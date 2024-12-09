@@ -244,9 +244,10 @@ impl MqttMsgHandler {
                         }
                         MqttTopicType::GetMasterAddress => services
                             .master_address
-                            .mqtt_get_address(message, &mqtt_msg_sender),
+                            .mqtt_get_address(message, &uart_msg_sender),
                         MqttTopicType::SetMasterAddress => {
-                            MasterAddress::mqtt_set_address(message, &uart_msg_sender)
+                            MasterAddress::mqtt_set_address(message, &uart_msg_sender);
+                            Ok(())
                         }
                         MqttTopicType::AddAcqFiles => services.node_manage.mqtt_add_acq_files(
                             message,

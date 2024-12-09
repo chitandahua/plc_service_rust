@@ -8,14 +8,40 @@ use crate::protocol::user_data::hex_to_dec;
 use crate::protocol::AppData;
 use crate::Result;
 
+use super::ADDR_LEN;
+
 // AFN 03H
 #[derive(Debug, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 pub enum QueryData {
+    MasterAddress = 4,
     BroadcastDelay = 9,
     GetModuleInfo = 10,
     GetMasterIdInfo = 12,
     HplcFrequency = 16,
+}
+
+pub struct MasterAddressRequest;
+
+impl From<MasterAddressRequest> for AppData {
+    fn from(_: MasterAddressRequest) -> Self {
+        AppData::new(Afn::QueryData, QueryData::MasterAddress as u8, None)
+    }
+}
+
+pub struct MasterAddressResponse {
+    pub master_addr: Address,
+}
+
+impl TryFrom<AppData> for MasterAddressResponse {
+    type Error = crate::Error;
+    fn try_from(app_data: AppData) -> Result<Self> {
+        app_data.check(Afn::QueryData, QueryData::MasterAddress as u8, ADDR_LEN)?;
+        let data_unit = app_data.data_units.unwrap();
+        Ok(MasterAddressResponse {
+            master_addr: data_unit[0..6].try_into().unwrap(),
+        })
+    }
 }
 
 pub struct BroadcastDelayRequest {

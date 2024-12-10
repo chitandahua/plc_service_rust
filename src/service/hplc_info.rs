@@ -28,6 +28,28 @@ trait HplcInfoResponse {
     fn extend(&mut self, item: Self);
 }
 
+#[derive(Debug, Serialize, Default)]
+struct MqttHplcInfoResponse<T> {
+    #[serde(rename = "totalNumber")]
+    total_number: u16,
+    body: Vec<T>,
+}
+
+impl<T> HplcInfoResponse for MqttHplcInfoResponse<T> {
+    fn total_number(&self) -> u16 {
+        self.total_number
+    }
+
+    fn item_number(&self) -> u16 {
+        self.body.len() as u16
+    }
+
+    fn extend(&mut self, item: Self) {
+        self.total_number = item.total_number;
+        self.body.extend(item.body);
+    }
+}
+
 // dyn HplcInfoResponse TODO 用不了downcast...  // :Any也不行
 struct MqttHplcInfo {
     items: Option<Box<dyn Any + Send + Sync>>,
@@ -404,7 +426,7 @@ impl HplcInfo {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 struct MqttNetTopologyInfo {
     #[serde(rename = "nodeAddr")]
     node_addr: String,
@@ -418,19 +440,13 @@ struct MqttNetTopologyInfo {
     node_role: u8,
 }
 
-#[derive(Debug, Default, Serialize)]
-struct MqttNetTopologyInfoResponse {
-    #[serde(rename = "totalNumber")]
-    total_number: u16,
-    #[serde(rename = "body")]
-    net_topology_infos: Vec<MqttNetTopologyInfo>,
-}
+type MqttNetTopologyInfoResponse = MqttHplcInfoResponse<MqttNetTopologyInfo>;
 
 impl From<NetTopologyResponse> for MqttNetTopologyInfoResponse {
     fn from(net_topology_response: NetTopologyResponse) -> Self {
         Self {
             total_number: net_topology_response.total_node_number,
-            net_topology_infos: net_topology_response
+            body: net_topology_response
                 .net_topology_infos
                 .into_iter()
                 .map(|net_topology_info| MqttNetTopologyInfo {
@@ -442,21 +458,6 @@ impl From<NetTopologyResponse> for MqttNetTopologyInfoResponse {
                 })
                 .collect(),
         }
-    }
-}
-
-impl HplcInfoResponse for MqttNetTopologyInfoResponse {
-    fn item_number(&self) -> u16 {
-        self.net_topology_infos.len() as u16
-    }
-
-    fn total_number(&self) -> u16 {
-        self.total_number
-    }
-
-    fn extend(&mut self, item: Self) {
-        self.total_number = item.total_number;
-        self.net_topology_infos.extend(item.net_topology_infos);
     }
 }
 
@@ -701,7 +702,7 @@ impl From<HplcInfoRequest> for NetworkNodeInfoRequest {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 struct MqttNodeVersionInfo {
     #[serde(rename = "nodeAddr")]
     node_addr: String,
@@ -726,34 +727,13 @@ impl From<NodeVersionInfo> for MqttNodeVersionInfo {
     }
 }
 
-#[derive(Debug, Serialize, Default)]
-struct MqttNodeVersionInfoResponse {
-    #[serde(rename = "totalNumber")]
-    total_number: u16,
-    #[serde(rename = "body")]
-    node_version_infos: Vec<MqttNodeVersionInfo>,
-}
-
-impl HplcInfoResponse for MqttNodeVersionInfoResponse {
-    fn item_number(&self) -> u16 {
-        self.node_version_infos.len() as u16
-    }
-
-    fn total_number(&self) -> u16 {
-        self.total_number
-    }
-
-    fn extend(&mut self, item: Self) {
-        self.total_number = item.total_number;
-        self.node_version_infos.extend(item.node_version_infos);
-    }
-}
+type MqttNodeVersionInfoResponse = MqttHplcInfoResponse<MqttNodeVersionInfo>;
 
 impl From<NetworkNodeInfoResponse> for MqttNodeVersionInfoResponse {
     fn from(network_node_info_response: NetworkNodeInfoResponse) -> Self {
         Self {
             total_number: network_node_info_response.total_node_number,
-            node_version_infos: network_node_info_response
+            body: network_node_info_response
                 .node_version_infos
                 .into_iter()
                 .map(MqttNodeVersionInfo::from)

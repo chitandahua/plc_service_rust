@@ -91,6 +91,7 @@ pub enum MqttTopicType {
     GetModuleInfo,
     GetMasterIdInfo,
     GetHplcFreq,
+    GetModeInfo,
     // 主地址
     GetMasterAddress,
     SetMasterAddress,
@@ -430,6 +431,10 @@ impl MqttMsgHandler {
                         }
                         MqttTopicType::DataInit => {
                             PlcInit::mqtt_data_init(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::GetModeInfo => {
+                            ModuleInfo::mqtt_get_mode_info(message, &uart_msg_sender);
                             Ok(())
                         }
                     };

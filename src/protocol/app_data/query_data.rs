@@ -14,11 +14,61 @@ use super::ADDR_LEN;
 #[derive(Debug, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 pub enum QueryData {
+    CommModuleInfo = 1,
     MasterAddress = 4,
     BroadcastDelay = 9,
     GetModuleInfo = 10,
     GetMasterIdInfo = 12,
     HplcFrequency = 16,
+}
+
+fn slice_to_bcd_string(slice: &[u8]) -> String {
+    slice.iter().rev().fold(String::new(), |acc, x| {
+        acc + &format!("{:02}", hex_to_dec(*x))
+    })
+}
+
+fn date_transfer(year: u8, month: u8, day: u8) -> NaiveDate {
+    //debug!("{:02x}-{:02x}-{:02x}", year, month, day);
+    NaiveDate::from_ymd_opt(
+        2000 + hex_to_dec(year) as i32,
+        hex_to_dec(month) as u32,
+        hex_to_dec(day) as u32,
+    )
+    .unwrap() // TODO
+}
+
+pub fn date_to_string(date: &NaiveDate) -> String {
+    date.format("%Y%m%d").to_string()
+}
+
+pub struct CommModuleInfoRequest;
+
+impl From<CommModuleInfoRequest> for AppData {
+    fn from(_: CommModuleInfoRequest) -> Self {
+        AppData::new(Afn::QueryData, QueryData::CommModuleInfo as u8, None)
+    }
+}
+
+pub struct CommModuleInfoResponse {
+    pub factory_code: String,
+    pub chip_code: String,
+    pub version_date: NaiveDate,
+    pub version: String,
+}
+
+impl TryFrom<AppData> for CommModuleInfoResponse {
+    type Error = crate::Error;
+    fn try_from(app_data: AppData) -> Result<Self> {
+        app_data.check(Afn::QueryData, QueryData::CommModuleInfo as u8, 9)?;
+        let data_unit = app_data.data_units.unwrap();
+        Ok(CommModuleInfoResponse {
+            factory_code: String::from_utf8(vec![data_unit[1], data_unit[0]]).unwrap(),
+            chip_code: String::from_utf8(vec![data_unit[3], data_unit[2]]).unwrap(),
+            version_date: date_transfer(data_unit[6], data_unit[5], data_unit[4]),
+            version: slice_to_bcd_string(&data_unit[7..9]),
+        })
+    }
 }
 
 pub struct MasterAddressRequest;
@@ -136,24 +186,8 @@ pub struct ModuleInfoResponse {
     pub factory_code: String,
     pub chip_code: String,
     pub version_date: NaiveDate,
-    pub version: u16,
+    pub version: String,
     pub comm_speed: Vec<u16>,
-}
-
-impl ModuleInfoResponse {
-    fn date_transfer(year: u8, month: u8, day: u8) -> NaiveDate {
-        //debug!("{:02x}-{:02x}-{:02x}", year, month, day);
-        NaiveDate::from_ymd_opt(
-            2000 + hex_to_dec(year) as i32,
-            hex_to_dec(month) as u32,
-            hex_to_dec(day) as u32,
-        )
-        .unwrap() // TODO
-    }
-
-    pub fn date_to_string(date: &NaiveDate) -> String {
-        date.format("%Y%m%d").to_string()
-    }
 }
 
 impl TryFrom<AppData> for ModuleInfoResponse {
@@ -183,12 +217,12 @@ impl TryFrom<AppData> for ModuleInfoResponse {
             main_node_addr: data_unit[14..20].try_into().unwrap(),
             max_node_num: u16::from_le_bytes([data_unit[20], data_unit[21]]),
             current_node_num: u16::from_le_bytes([data_unit[22], data_unit[23]]),
-            protocol_release_date: Self::date_transfer(data_unit[26], data_unit[25], data_unit[24]),
-            last_record_date: Self::date_transfer(data_unit[29], data_unit[28], data_unit[27]),
+            protocol_release_date: date_transfer(data_unit[26], data_unit[25], data_unit[24]),
+            last_record_date: date_transfer(data_unit[29], data_unit[28], data_unit[27]),
             factory_code: String::from_utf8(vec![data_unit[31], data_unit[30]]).unwrap(),
             chip_code: String::from_utf8(vec![data_unit[33], data_unit[32]]).unwrap(),
-            version_date: Self::date_transfer(data_unit[36], data_unit[35], data_unit[34]),
-            version: u16::from_le_bytes([data_unit[37], data_unit[38]]),
+            version_date: date_transfer(data_unit[36], data_unit[35], data_unit[34]),
+            version: slice_to_bcd_string(&data_unit[37..39]),
             comm_speed: data_unit[39..]
                 .chunks(2)
                 .map(|x| u16::from_le_bytes(x.try_into().unwrap()))
@@ -227,20 +261,16 @@ impl fmt::Display for ModuleInfoResponse {
         writeln!(
             f,
             "protocol_release_date: {}",
-            Self::date_to_string(&self.protocol_release_date)
+            date_to_string(&self.protocol_release_date)
         )?;
         writeln!(
             f,
             "last_record_date: {}",
-            Self::date_to_string(&self.last_record_date)
+            date_to_string(&self.last_record_date)
         )?;
         writeln!(f, "factory_code: {}", self.factory_code)?;
         writeln!(f, "chip_code: {}", self.chip_code)?;
-        writeln!(
-            f,
-            "version_date: {}",
-            Self::date_to_string(&self.version_date)
-        )?;
+        writeln!(f, "version_date: {}", date_to_string(&self.version_date))?;
         writeln!(f, "version: {}", self.version)?;
         writeln!(f, "comm_speed:")?;
         for speed in &self.comm_speed {
@@ -363,20 +393,20 @@ mod tests {
             NaiveDate::from_ymd_opt(2024, 12, 1).unwrap()
         );
 
-        assert_eq!(module_info_response.version, 0x2300);
+        assert_eq!(module_info_response.version, "2300");
         assert_eq!(module_info_response.comm_speed, vec![0x8221, 0x2300]);
     }
 
     #[test]
     fn test_date_transfer() {
         let date = NaiveDate::from_ymd_opt(2007, 8, 18).unwrap();
-        assert_eq!(ModuleInfoResponse::date_transfer(0x07, 0x08, 0x18), date);
+        assert_eq!(date_transfer(0x07, 0x08, 0x18), date);
     }
 
     #[test]
     fn test_date_to_string() {
         let date = NaiveDate::from_ymd_opt(2007, 8, 18).unwrap();
-        assert_eq!(ModuleInfoResponse::date_to_string(&date), "20070818");
+        assert_eq!(date_to_string(&date), "20070818");
     }
 
     #[test]

@@ -199,6 +199,9 @@ impl UartMsgHandler {
             QueryData::MasterAddress => {
                 MasterAddress::uart_get_address(message, &self.mqtt_msg_sender)
             }
+            QueryData::CommModuleInfo => {
+                ModuleInfo::uart_get_mode_info_response(message, &self.mqtt_msg_sender)
+            }
         }
     }
 

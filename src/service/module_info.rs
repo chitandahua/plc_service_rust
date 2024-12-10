@@ -5,8 +5,8 @@ use std::sync::mpsc;
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::{MqttPayload, PayloadBody};
 use crate::protocol::app_data::{
-    self, module_id_format_string, ConfirmResponse, MasterIdInfoRequest, MasterIdInfoResponse,
-    ModuleInfoRequest,
+    self, date_to_string, module_id_format_string, CommModuleInfoRequest, CommModuleInfoResponse,
+    ConfirmResponse, MasterIdInfoRequest, MasterIdInfoResponse, ModuleInfoRequest,
 };
 use crate::protocol::{Address, Frame};
 use crate::request_info::{MqttReqInfo, UartMessage};
@@ -101,7 +101,7 @@ impl ModuleInfo {
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
         use crate::config::SCHEMA_PATH;
         use crate::schema_check;
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/modeInfo");
+        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/moduleInfo");
         let schema =
             schema_check::parse_schema(SCHEMA_PATH.join("get_module_info_schema.json")).ok();
         mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetModuleInfo, schema);
@@ -113,6 +113,61 @@ impl ModuleInfo {
         let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/hplcFreq");
         let schema = schema_check::parse_schema(SCHEMA_PATH.join("get_hplc_freq_schema.json")).ok();
         mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetHplcFreq, schema);
+
+        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/modeInfo");
+        let schema = schema_check::parse_schema(SCHEMA_PATH.join("get_mode_info_schema.json")).ok();
+        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetModeInfo, schema);
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MqttModeInfoResponse {
+    #[serde(rename = "factory")]
+    factory_code: String,
+    #[serde(rename = "moduleVendorCode")]
+    module_vendor_code: String,
+    #[serde(rename = "softDate")]
+    soft_date: String,
+    #[serde(rename = "softVer")]
+    soft_verion: String,
+}
+
+impl From<CommModuleInfoResponse> for MqttModeInfoResponse {
+    fn from(comm_module_info_response: CommModuleInfoResponse) -> Self {
+        MqttModeInfoResponse {
+            factory_code: comm_module_info_response.factory_code,
+            module_vendor_code: comm_module_info_response.chip_code,
+            soft_date: date_to_string(&comm_module_info_response.version_date),
+            soft_verion: comm_module_info_response.version.to_string(),
+        }
+    }
+}
+
+impl IntoMqttMessage for MqttModeInfoResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttMessage::new_with_req_info_body(
+            mqtt_req_info,
+            Some(PayloadBody::Nested {
+                body: serde_json::to_value(self).unwrap(),
+            }),
+        )
+    }
+}
+
+impl ModuleInfo {
+    pub fn mqtt_get_mode_info(message: MqttMessage, uart_msg_sender: &mpsc::Sender<UartMessage>) {
+        mqtt_request_uart_handler::<CommModuleInfoRequest>(
+            CommModuleInfoRequest,
+            message,
+            uart_msg_sender,
+        );
+    }
+
+    pub fn uart_get_mode_info_response(
+        message: UartMessage,
+        sender: &mpsc::Sender<MqttMessage>,
+    ) -> Result<()> {
+        uart_response_handler::<CommModuleInfoResponse, MqttModeInfoResponse>(message, sender)
     }
 }
 
@@ -201,7 +256,7 @@ impl From<app_data::ModuleInfoResponse> for ModuleInfoResponse {
                 "{}{}-{}-{}",
                 module_info_response.factory_code,
                 module_info_response.chip_code,
-                app_data::ModuleInfoResponse::date_to_string(&module_info_response.version_date),
+                date_to_string(&module_info_response.version_date),
                 module_info_response.version
             ),
         }

@@ -1,3 +1,4 @@
+use anyhow::ensure;
 use std::sync::{mpsc, Arc};
 use tracing::debug;
 
@@ -443,9 +444,36 @@ impl UartTimeoutHandler {
             .unwrap();
     }
 
+    fn default_timeout_handler(&self, req_info: ReqInfo) {
+        match req_info.into_mqtt_req_info() {
+            Some(mqtt_req_info) => self.mqtt_timeout_cb(mqtt_req_info),
+            None => self.plc_init.notify_timeout(),
+        }
+    }
+
     pub fn handle_timeout(&self, req_info: ReqInfo, extra_req_info: Option<ReqInfo>) -> Result<()> {
-        match req_info.frame_key().to_tuple() {
-            (Afn::CocurrentReadMeter, 1) => {
+        let (afn, fn_num) = req_info.frame_key().to_tuple();
+
+        match afn {
+            Afn::CocurrentReadMeter => {
+                self.handle_concurrent_read_meter_timeout(fn_num, req_info)?
+            }
+            Afn::RouteSet => self.handle_route_set_timeout(fn_num, req_info)?,
+            Afn::RouteDataForward => self.handle_route_data_forward_timeout(fn_num)?,
+            Afn::DataForward => self.handle_data_forward_timeout(fn_num)?,
+            Afn::RouteDataRead => self.handle_route_data_read_timeout(fn_num, extra_req_info)?,
+            Afn::RouteGet => self.handle_route_get_timeout(fn_num, req_info)?,
+            _ => self.default_timeout_handler(req_info),
+        }
+
+        Ok(())
+    }
+
+    fn handle_concurrent_read_meter_timeout(&self, fn_num: u8, req_info: ReqInfo) -> Result<()> {
+        let fn_num = MeterReading::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(Afn::CocurrentReadMeter, fn_num))?;
+        match fn_num {
+            MeterReading::ActiveReadMeter => {
                 let master_address = self.services.master_address.get_master_address();
                 self.services.concurrent_meter.uart_meter_reading_timeout(
                     req_info.into_mqtt_req_info().unwrap(),
@@ -454,42 +482,96 @@ impl UartTimeoutHandler {
                     &self.mqtt_msg_sender,
                 )?;
             }
-            (Afn::RouteSet, 1) | (Afn::RouteSet, 2) => {
+        }
+        Ok(())
+    }
+
+    fn handle_route_set_timeout(&self, fn_num: u8, req_info: ReqInfo) -> Result<()> {
+        let fn_num = RouteSet::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(Afn::RouteSet, fn_num))?;
+        match fn_num {
+            RouteSet::AddNode | RouteSet::DelNode => {
                 self.services.node_manage.uart_operate_acq_files_timeout();
             }
-            (Afn::RouteDataForward, 1) => {
+            RouteSet::ActiveNodeRegister => {
+                self.services
+                    .identify_area
+                    .uart_active_slave_node_register_timeout();
+            }
+            _ => self.default_timeout_handler(req_info),
+        }
+        Ok(())
+    }
+
+    fn handle_route_data_forward_timeout(&self, fn_num: u8) -> Result<()> {
+        let fn_num = DataForward::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(Afn::RouteDataForward, fn_num))?;
+        match fn_num {
+            DataForward::MonitorNode => {
                 self.services.monitor_node.uart_monitor_node_timeout();
             }
-            (Afn::DataForward, 1) => {
+        }
+        Ok(())
+    }
+
+    fn handle_data_forward_timeout(&self, fn_num: u8) -> Result<()> {
+        let fn_num = DataTransfer::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(Afn::DataForward, fn_num))?;
+        match fn_num {
+            DataTransfer::TransferFrame => {
                 self.services.data_transfer.uart_data_transfer_timeout();
             }
-            (Afn::RouteDataRead, 3) => {
-                if let Some(extra_req_info) = extra_req_info {
-                    match extra_req_info.frame_key().to_tuple() {
-                        (Afn::RouteDataForward, 1) => {
-                            self.services.monitor_node.uart_monitor_node_timeout();
+        }
+        Ok(())
+    }
+
+    fn handle_route_data_read_timeout(
+        &self,
+        fn_num: u8,
+        extra_req_info: Option<ReqInfo>,
+    ) -> Result<()> {
+        let fn_num = RouteDataRead::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(Afn::RouteDataRead, fn_num))?;
+        match fn_num {
+            RouteDataRead::CommDelay => {
+                ensure!(
+                    extra_req_info.is_some(),
+                    anyhow::anyhow!("missing extra req info")
+                );
+
+                let (afn, fn_num) = extra_req_info.unwrap().frame_key().to_tuple();
+                match afn {
+                    Afn::RouteDataForward => {
+                        let fn_num = DataForward::try_from(fn_num)
+                            .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
+                        match fn_num {
+                            DataForward::MonitorNode => {
+                                self.services.monitor_node.uart_monitor_node_timeout()
+                            }
                         }
-                        _ => unreachable!(),
                     }
+                    _ => unreachable!(),
                 }
             }
-            (Afn::RouteSet, 5) => {
-                self.services
-                    .identify_area
-                    .uart_active_slave_node_register_timeout();
-            }
-            (Afn::RouteGet, 4) if req_info.is_init() => {
-                self.services
-                    .identify_area
-                    .uart_active_slave_node_register_timeout();
-            }
-            (Afn::RouteGet, 21) => self.services.hplc_info.uart_net_topology_response_timeout(),
-            _ => match req_info.into_mqtt_req_info() {
-                Some(mqtt_req_info) => self.mqtt_timeout_cb(mqtt_req_info),
-                None => self.plc_init.notify_timeout(),
-            },
+            _ => unreachable!(),
         }
+        Ok(())
+    }
 
+    fn handle_route_get_timeout(&self, fn_num: u8, req_info: ReqInfo) -> Result<()> {
+        let fn_num = RouteQuery::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(Afn::RouteGet, fn_num))?;
+        match fn_num {
+            RouteQuery::RunningStatus if req_info.is_init() => {
+                self.services
+                    .identify_area
+                    .uart_active_slave_node_register_timeout();
+            }
+            RouteQuery::NetTopology => {
+                self.services.hplc_info.uart_net_topology_response_timeout();
+            }
+            _ => self.default_timeout_handler(req_info),
+        }
         Ok(())
     }
 }

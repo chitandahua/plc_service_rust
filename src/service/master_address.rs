@@ -144,7 +144,7 @@ impl MasterAddress {
         let response = UartResponse::<ConfirmResponse>::try_from(message.frame)?;
         let mut mqtt_req_info = message.req_info.into_mqtt_req_info().unwrap();
         let message = match response {
-            UartResponse::Normal(response) => {
+            UartResponse::Normal(_) => {
                 {
                     let mut address = self.node_addr.address.lock().unwrap();
                     *address = *mqtt_req_info

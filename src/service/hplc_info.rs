@@ -50,6 +50,18 @@ impl<T> HplcInfoResponse for MqttHplcInfoResponse<T> {
     }
 }
 
+impl<T> IntoMqttMessage for MqttHplcInfoResponse<T>
+where
+    T: serde::ser::Serialize,
+{
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttMessage::new_with_req_info_body(
+            mqtt_req_info,
+            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
+        )
+    }
+}
+
 // dyn HplcInfoResponse TODO 用不了downcast...  // :Any也不行
 struct MqttHplcInfo {
     items: Option<Box<dyn Any + Send + Sync>>,
@@ -461,15 +473,6 @@ impl From<NetTopologyResponse> for MqttNetTopologyInfoResponse {
     }
 }
 
-impl IntoMqttMessage for MqttNetTopologyInfoResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
-        )
-    }
-}
-
 impl From<HplcInfoRequest> for NetTopologyRequest {
     fn from(value: HplcInfoRequest) -> Self {
         Self::new(value.start_index, value.node_number)
@@ -739,15 +742,6 @@ impl From<NetworkNodeInfoResponse> for MqttNodeVersionInfoResponse {
                 .map(MqttNodeVersionInfo::from)
                 .collect(),
         }
-    }
-}
-
-impl IntoMqttMessage for MqttNodeVersionInfoResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
-        )
     }
 }
 

@@ -3,8 +3,9 @@ use chrono::NaiveDate;
 use num_enum::TryFromPrimitive;
 use std::fmt;
 
-use crate::protocol::app_data::{Address, Afn, AppDataError, ModuleIdFormat};
-use crate::protocol::user_data::hex_to_dec;
+use crate::protocol::app_data::{
+    date_to_string, date_transfer, slice_to_bcd_string, Address, Afn, AppDataError, ModuleIdFormat,
+};
 use crate::protocol::AppData;
 use crate::Result;
 
@@ -20,26 +21,6 @@ pub enum QueryData {
     GetModuleInfo = 10,
     GetMasterIdInfo = 12,
     HplcFrequency = 16,
-}
-
-fn slice_to_bcd_string(slice: &[u8]) -> String {
-    slice.iter().rev().fold(String::new(), |acc, x| {
-        acc + &format!("{:02}", hex_to_dec(*x))
-    })
-}
-
-fn date_transfer(year: u8, month: u8, day: u8) -> NaiveDate {
-    //debug!("{:02x}-{:02x}-{:02x}", year, month, day);
-    NaiveDate::from_ymd_opt(
-        2000 + hex_to_dec(year) as i32,
-        hex_to_dec(month) as u32,
-        hex_to_dec(day) as u32,
-    )
-    .unwrap() // TODO
-}
-
-pub fn date_to_string(date: &NaiveDate) -> String {
-    date.format("%Y%m%d").to_string()
 }
 
 pub struct CommModuleInfoRequest;

@@ -1,8 +1,9 @@
+use crate::protocol::user_data::hex_to_dec;
 use crate::Result;
 use anyhow::ensure;
+use chrono::NaiveDate;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::fmt::{Display, Formatter};
-
 use thiserror::Error;
 
 mod active_report;
@@ -33,10 +34,9 @@ pub use meter_reading::{ConcurrentReadMeterRequest, ConcurrentReadMeterResponse,
 
 mod query_data;
 pub use query_data::{
-    date_to_string, BroadcastDelayRequest, BroadcastDelayResponse, CommModuleInfoRequest,
-    CommModuleInfoResponse, GetHplcFreqRequest, GetHplcFreqResponse, MasterAddressRequest,
-    MasterAddressResponse, MasterIdInfoRequest, MasterIdInfoResponse, ModuleInfoRequest,
-    ModuleInfoResponse, QueryData,
+    BroadcastDelayRequest, BroadcastDelayResponse, CommModuleInfoRequest, CommModuleInfoResponse,
+    GetHplcFreqRequest, GetHplcFreqResponse, MasterAddressRequest, MasterAddressResponse,
+    MasterIdInfoRequest, MasterIdInfoResponse, ModuleInfoRequest, ModuleInfoResponse, QueryData,
 };
 
 mod route_data_forward;
@@ -49,10 +49,11 @@ mod route_get;
 pub use route_get::{
     ChipInfoRequest, ChipInfoResponse, CurrentStatus, IdInfoRequest, IdInfoResponse,
     MultipleNetRequest, MultipleNetResponse, NetTopologyRequest, NetTopologyResponse,
-    NetworkSizeRequest, NetworkSizeResponse, NodeDetail, QueryNodeInfoRequest,
-    QueryNodeInfoResponse, QueryNodeLineInfoRequest, QueryNodeLineInfoResponse,
-    QueryNodeNumberRequest, QueryNodeNumberResponse, RouteQuery, RunningStatusRequest,
-    RunningStatusResponse, SlaveModuleIdRequest, SlaveModuleIdResponse,
+    NetworkNodeInfoRequest, NetworkNodeInfoResponse, NetworkSizeRequest, NetworkSizeResponse,
+    NodeDetail, NodeVersionInfo, QueryNodeInfoRequest, QueryNodeInfoResponse,
+    QueryNodeLineInfoRequest, QueryNodeLineInfoResponse, QueryNodeNumberRequest,
+    QueryNodeNumberResponse, RouteQuery, RunningStatusRequest, RunningStatusResponse,
+    SlaveModuleIdRequest, SlaveModuleIdResponse,
 };
 
 mod route_set;
@@ -60,6 +61,26 @@ pub use route_set::{
     ActiveNodeRegisterRequest, AddNodeRequest, DelNodeRequest, NodeInfo, RouteSet,
     StopNodeRegisterRequest,
 };
+
+pub(crate) fn slice_to_bcd_string(slice: &[u8]) -> String {
+    slice.iter().rev().fold(String::new(), |acc, x| {
+        acc + &format!("{:02}", hex_to_dec(*x))
+    })
+}
+
+pub fn date_to_string(date: &NaiveDate) -> String {
+    date.format("%Y%m%d").to_string()
+}
+
+pub fn date_transfer(year: u8, month: u8, day: u8) -> NaiveDate {
+    //debug!("{:02x}-{:02x}-{:02x}", year, month, day);
+    NaiveDate::from_ymd_opt(
+        2000 + hex_to_dec(year) as i32,
+        hex_to_dec(month) as u32,
+        hex_to_dec(day) as u32,
+    )
+    .unwrap() // TODO
+}
 
 pub const ADDR_LEN: usize = 6;
 #[derive(Debug, Clone, PartialEq, Default)]

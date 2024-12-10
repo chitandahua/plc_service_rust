@@ -111,6 +111,7 @@ pub enum MqttTopicType {
     GetNetTopology,
     GetMultiNet,
     GetNetworkSize,
+    GetNodeVersion,
     // debug
     SendDebugFrame,
     // 设备信息
@@ -435,6 +436,14 @@ impl MqttMsgHandler {
                         }
                         MqttTopicType::GetModeInfo => {
                             ModuleInfo::mqtt_get_mode_info(message, &uart_msg_sender);
+                            Ok(())
+                        }
+                        MqttTopicType::GetNodeVersion => {
+                            services.hplc_info.mqtt_node_version_info(
+                                message,
+                                &mqtt_msg_sender,
+                                &uart_msg_sender,
+                            );
                             Ok(())
                         }
                     };

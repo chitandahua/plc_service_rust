@@ -1,7 +1,10 @@
 use anyhow::ensure;
+use chrono::NaiveDate;
 use num_enum::TryFromPrimitive;
 
-use crate::protocol::app_data::{Address, Afn, AppDataError, ModuleIdFormat};
+use crate::protocol::app_data::{
+    date_transfer, slice_to_bcd_string, Address, Afn, AppDataError, ModuleIdFormat,
+};
 use crate::protocol::AppData;
 use crate::Result;
 
@@ -19,8 +22,91 @@ pub enum RouteQuery {
     NetTopology = 21,
     NodeLineInfo = 31,
     IdInfo = 40,
+    NetworkNodeInfo = 104,
     MultipleNet = 111,
     ChipInfo = 112,
+}
+
+pub struct NetworkNodeInfoRequest {
+    start_index: u16,
+    node_number: u8,
+}
+
+impl NetworkNodeInfoRequest {
+    pub fn new(start_index: u16, node_number: u8) -> Self {
+        Self {
+            start_index,
+            node_number,
+        }
+    }
+}
+
+impl From<NetworkNodeInfoRequest> for AppData {
+    fn from(req: NetworkNodeInfoRequest) -> Self {
+        let mut data = Vec::new();
+        data.extend(req.start_index.to_le_bytes());
+        data.push(req.node_number);
+        AppData::new(Afn::RouteGet, RouteQuery::NetworkNodeInfo as u8, Some(data))
+    }
+}
+
+pub struct NodeVersionInfo {
+    pub address: Address,
+    pub version: String,
+    pub version_date: NaiveDate,
+    pub factory_code: String,
+    pub chip_code: String,
+}
+
+impl From<&[u8]> for NodeVersionInfo {
+    fn from(data: &[u8]) -> Self {
+        Self {
+            address: data[0..6].try_into().unwrap(),
+            version: slice_to_bcd_string(&data[6..8]),
+            version_date: date_transfer(data[10], data[9], data[8]),
+            factory_code: String::from_utf8(vec![data[12], data[11]]).unwrap(),
+            chip_code: String::from_utf8(vec![data[14], data[13]]).unwrap(),
+        }
+    }
+}
+
+pub struct NetworkNodeInfoResponse {
+    pub total_node_number: u16,
+    _node_number: u8,
+    pub node_version_infos: Vec<NodeVersionInfo>,
+}
+
+impl TryFrom<AppData> for NetworkNodeInfoResponse {
+    type Error = crate::Error;
+
+    fn try_from(app_data: AppData) -> Result<Self> {
+        const PREFIX_SIZE: usize = 3;
+        const NODE_VERSION_INFO_SIZE: usize = 15;
+        ensure!(
+            app_data.data_length() >= PREFIX_SIZE,
+            AppDataError::DataLength(app_data.data_length())
+        );
+
+        let node_number = app_data.data_units.as_ref().unwrap()[2] as usize;
+        app_data.check(
+            Afn::RouteGet,
+            RouteQuery::NetworkNodeInfo as u8,
+            node_number * NODE_VERSION_INFO_SIZE + PREFIX_SIZE,
+        )?;
+
+        let data_units = app_data.data_units.unwrap();
+
+        let total_node_number = u16::from_le_bytes(data_units[0..2].try_into()?);
+        let node_version_infos = data_units[PREFIX_SIZE..]
+            .chunks(NODE_VERSION_INFO_SIZE)
+            .map(NodeVersionInfo::from)
+            .collect();
+        Ok(Self {
+            total_node_number,
+            _node_number: node_number as u8,
+            node_version_infos,
+        })
+    }
 }
 
 #[derive(Debug)]

@@ -5,9 +5,10 @@ use std::sync::{mpsc, Arc, Condvar, Mutex};
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::PayloadBody;
 use crate::protocol::app_data::{
-    module_id_format_string, ChipInfoRequest, ChipInfoResponse, IdInfoRequest, IdInfoResponse,
-    MultipleNetRequest, MultipleNetResponse, NetTopologyRequest, NetTopologyResponse,
-    NetworkSizeRequest, NetworkSizeResponse, QueryNodeLineInfoRequest, QueryNodeLineInfoResponse,
+    date_to_string, module_id_format_string, ChipInfoRequest, ChipInfoResponse, IdInfoRequest,
+    IdInfoResponse, MultipleNetRequest, MultipleNetResponse, NetTopologyRequest,
+    NetTopologyResponse, NetworkNodeInfoRequest, NetworkNodeInfoResponse, NetworkSizeRequest,
+    NetworkSizeResponse, NodeVersionInfo, QueryNodeLineInfoRequest, QueryNodeLineInfoResponse,
     SlaveModuleIdRequest, SlaveModuleIdResponse,
 };
 use crate::protocol::AppData;
@@ -124,6 +125,11 @@ impl HplcInfo {
         let schema =
             schema_check::parse_schema(SCHEMA_PATH.join("get_network_size_schema.json")).ok();
         mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetNetworkSize, schema);
+
+        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/nodeversion");
+        let schema =
+            schema_check::parse_schema(SCHEMA_PATH.join("get_node_version_schema.json")).ok();
+        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetNodeVersion, schema);
     }
 }
 
@@ -560,6 +566,12 @@ impl HplcInfo {
         mqtt_msg_sender.send(response).unwrap();
     }
 
+    pub fn uart_hplc_info_response_timeout(&self) {
+        let mut info = self.info.lock().unwrap();
+        info.result = Some(Err(anyhow::anyhow!(MqttResponseError::Timeout)));
+        self.cond.notify_one();
+    }
+
     pub fn mqtt_net_topology_info(
         &self,
         message: MqttMessage,
@@ -575,12 +587,6 @@ impl HplcInfo {
 
     pub fn uart_net_topology_response(&self, message: UartMessage) -> Result<()> {
         self.uart_hplc_info_response::<NetTopologyResponse, MqttNetTopologyInfoResponse>(message)
-    }
-
-    pub fn uart_net_topology_response_timeout(&self) {
-        let mut info = self.info.lock().unwrap();
-        info.result = Some(Err(anyhow::anyhow!(MqttResponseError::Timeout)));
-        self.cond.notify_one();
     }
 }
 
@@ -684,5 +690,104 @@ impl HplcInfo {
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
         uart_response_handler::<NetworkSizeResponse, MqttNetworkSizeResponse>(message, sender)
+    }
+}
+
+type MqttNodeVersionInfoRequest = HplcInfoRequest;
+
+impl From<HplcInfoRequest> for NetworkNodeInfoRequest {
+    fn from(value: HplcInfoRequest) -> Self {
+        Self::new(value.start_index, value.node_number)
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MqttNodeVersionInfo {
+    #[serde(rename = "nodeAddr")]
+    node_addr: String,
+    #[serde(rename = "softVer")]
+    soft_ver: String,
+    #[serde(rename = "softDate")]
+    soft_date: String,
+    factory: String,
+    #[serde(rename = "chipCode")]
+    chip_code: String,
+}
+
+impl From<NodeVersionInfo> for MqttNodeVersionInfo {
+    fn from(network_node_version_info: NodeVersionInfo) -> Self {
+        MqttNodeVersionInfo {
+            node_addr: network_node_version_info.address.to_string(),
+            soft_ver: network_node_version_info.version,
+            soft_date: date_to_string(&network_node_version_info.version_date),
+            factory: network_node_version_info.factory_code,
+            chip_code: network_node_version_info.chip_code,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Default)]
+struct MqttNodeVersionInfoResponse {
+    #[serde(rename = "totalNumber")]
+    total_number: u16,
+    #[serde(rename = "body")]
+    node_version_infos: Vec<MqttNodeVersionInfo>,
+}
+
+impl HplcInfoResponse for MqttNodeVersionInfoResponse {
+    fn item_number(&self) -> u16 {
+        self.node_version_infos.len() as u16
+    }
+
+    fn total_number(&self) -> u16 {
+        self.total_number
+    }
+
+    fn extend(&mut self, item: Self) {
+        self.total_number = item.total_number;
+        self.node_version_infos.extend(item.node_version_infos);
+    }
+}
+
+impl From<NetworkNodeInfoResponse> for MqttNodeVersionInfoResponse {
+    fn from(network_node_info_response: NetworkNodeInfoResponse) -> Self {
+        Self {
+            total_number: network_node_info_response.total_node_number,
+            node_version_infos: network_node_info_response
+                .node_version_infos
+                .into_iter()
+                .map(MqttNodeVersionInfo::from)
+                .collect(),
+        }
+    }
+}
+
+impl IntoMqttMessage for MqttNodeVersionInfoResponse {
+    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+        MqttMessage::new_with_req_info_body(
+            mqtt_req_info,
+            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
+        )
+    }
+}
+
+impl HplcInfo {
+    pub fn mqtt_node_version_info(
+        &self,
+        message: MqttMessage,
+        mqtt_msg_sender: &mpsc::Sender<MqttMessage>,
+        uart_msg_sender: &mpsc::Sender<UartMessage>,
+    ) {
+        self.mqtt_hplc_info_request::<MqttNodeVersionInfoRequest, NetworkNodeInfoRequest, MqttNodeVersionInfoResponse>(
+            message,
+            mqtt_msg_sender,
+            uart_msg_sender,
+        );
+    }
+
+    pub fn uart_node_version_response(&self, message: UartMessage) -> Result<()> {
+        self.uart_hplc_info_response::<NetworkNodeInfoResponse, MqttNodeVersionInfoResponse>(
+            message,
+        )
     }
 }

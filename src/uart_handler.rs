@@ -304,6 +304,9 @@ impl UartMsgHandler {
             RouteQuery::NetworkSize => {
                 HplcInfo::uart_network_size_response(message, &self.mqtt_msg_sender)
             }
+            RouteQuery::NetworkNodeInfo => {
+                self.services.hplc_info.uart_node_version_response(message)
+            }
         }
     }
 
@@ -570,8 +573,8 @@ impl UartTimeoutHandler {
                     .identify_area
                     .uart_active_slave_node_register_timeout();
             }
-            RouteQuery::NetTopology => {
-                self.services.hplc_info.uart_net_topology_response_timeout();
+            RouteQuery::NetTopology | RouteQuery::NetworkNodeInfo => {
+                self.services.hplc_info.uart_hplc_info_response_timeout();
             }
             _ => self.default_timeout_handler(req_info),
         }

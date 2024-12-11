@@ -11,7 +11,10 @@ use crate::service::parse_response::{
     mqtt_info_request_uart_handler, mqtt_request_uart_handler, uart_response_handler,
 };
 use crate::service::{IntoMqttMessage, UartResponse};
-use crate::{protocol::app_data::Address, MqttMsgHandler, Result, UartMessage, APP_NAME};
+use crate::{
+    impl_into_mqtt_message, protocol::app_data::Address, MqttMsgHandler, Result, UartMessage,
+    APP_NAME,
+};
 
 pub struct MasterAddress {
     node_addr: NodeAddress,
@@ -47,14 +50,7 @@ impl From<MasterAddressResponse> for MqttAddressGetResponse {
     }
 }
 
-impl IntoMqttMessage for MqttAddressGetResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
-        )
-    }
-}
+impl_into_mqtt_message!(MqttAddressGetResponse, flat);
 
 impl MasterAddress {
     pub fn new() -> Self {

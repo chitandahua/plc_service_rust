@@ -16,7 +16,10 @@ use crate::protocol::Frame;
 use crate::request_info::MqttReqInfo;
 use crate::service::parse_response::uart_response_handler;
 use crate::service::{IntoMqttMessage, UartResponse};
-use crate::{MqttMsgHandler, MqttResponseError, ReqInfo, Result, UartMessage, APP_NAME};
+use crate::{
+    impl_into_mqtt_message, MqttMsgHandler, MqttResponseError, ReqInfo, Result, UartMessage,
+    APP_NAME,
+};
 
 struct NodeConfig {
     node_config: node_config::NodeConfig,
@@ -476,14 +479,7 @@ impl From<QueryNodeNumberResponse> for NodeNumerResponse {
     }
 }
 
-impl IntoMqttMessage for NodeNumerResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
-        )
-    }
-}
+impl_into_mqtt_message!(NodeNumerResponse, flat);
 
 #[derive(Debug, Serialize)]
 struct MqttNodeInfoResponse {
@@ -503,14 +499,7 @@ impl From<QueryNodeInfoResponse> for MqttNodeInfoResponse {
     }
 }
 
-impl IntoMqttMessage for MqttNodeInfoResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
-        )
-    }
-}
+impl_into_mqtt_message!(MqttNodeInfoResponse, flat);
 
 impl NodeManage {
     pub fn mqtt_get_acq_files(

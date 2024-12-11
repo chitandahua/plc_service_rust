@@ -10,6 +10,7 @@ use crate::request_info::UartMessage;
 use crate::service::parse_response::{mqtt_request_handler, uart_response_handler};
 use crate::{MqttMessage, MqttMsgHandler, Result, APP_NAME};
 
+use crate::impl_into_mqtt_message;
 use crate::service::{IntoMqttMessage, MqttReqInfo, RouteCtrl};
 use std::sync::mpsc;
 
@@ -42,14 +43,7 @@ impl From<BroadcastDelayResponse> for MqttBroadCastDelayResponse {
     }
 }
 
-impl IntoMqttMessage for MqttBroadCastDelayResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
-        )
-    }
-}
+impl_into_mqtt_message!(MqttBroadCastDelayResponse, flat);
 
 type MqttBroadCastCmdRequest = MqttBroadCastDelayRequest;
 

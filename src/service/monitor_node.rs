@@ -5,7 +5,8 @@ use crate::protocol::{Address, AddressField, Frame};
 use crate::request_info::FrameKey;
 use crate::service::{parse_response::UartResponse, MqttReqInfo};
 use crate::{
-    MqttMessage, MqttMsgHandler, MqttResponseError, ReqInfo, Result, UartMessage, APP_NAME,
+    impl_into_mqtt_message, MqttMessage, MqttMsgHandler, MqttResponseError, ReqInfo, Result,
+    UartMessage, APP_NAME,
 };
 
 use serde::{Deserialize, Serialize};
@@ -131,14 +132,7 @@ pub(crate) struct MonitorNodeDelayResponse {
     pub delay: u16,
 }
 
-impl IntoMqttMessage for MonitorNodeDelayResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
-        )
-    }
-}
+impl_into_mqtt_message!(MonitorNodeDelayResponse, flat);
 
 #[derive(Debug, Serialize)]
 pub(crate) struct MonitorNodeDataResponse {
@@ -153,14 +147,7 @@ impl From<app_data::MonitorNodeResponse> for MonitorNodeDataResponse {
     }
 }
 
-impl IntoMqttMessage for MonitorNodeDataResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
-        )
-    }
-}
+impl_into_mqtt_message!(MonitorNodeDataResponse, flat);
 
 #[derive(Debug)]
 pub(crate) enum MonitorNodeResponse {

@@ -14,7 +14,7 @@ use crate::service::parse_response::{
     mqtt_info_request_uart_handler, mqtt_request_uart_handler, uart_response_handler, UartResponse,
 };
 use crate::service::IntoMqttMessage;
-use crate::{MqttMessage, MqttMsgHandler, ReqInfo, Result, APP_NAME};
+use crate::{impl_into_mqtt_message, MqttMessage, MqttMsgHandler, ReqInfo, Result, APP_NAME};
 
 pub struct ModuleInfo;
 
@@ -143,16 +143,7 @@ impl From<CommModuleInfoResponse> for MqttModeInfoResponse {
     }
 }
 
-impl IntoMqttMessage for MqttModeInfoResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Nested {
-                body: serde_json::to_value(self).unwrap(),
-            }),
-        )
-    }
-}
+impl_into_mqtt_message!(MqttModeInfoResponse, nested);
 
 impl ModuleInfo {
     pub fn mqtt_get_mode_info(message: MqttMessage, uart_msg_sender: &mpsc::Sender<UartMessage>) {
@@ -185,14 +176,7 @@ impl From<app_data::GetHplcFreqResponse> for HplcFrequencyResponse {
     }
 }
 
-impl IntoMqttMessage for HplcFrequencyResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
-        )
-    }
-}
+impl_into_mqtt_message!(HplcFrequencyResponse, flat);
 
 impl ModuleInfo {
     pub fn mqtt_get_hplc_freq(message: MqttMessage, uart_msg_sender: &mpsc::Sender<UartMessage>) {
@@ -303,13 +287,4 @@ impl From<MasterIdInfoResponse> for ModeIdInfoResponse {
     }
 }
 
-impl IntoMqttMessage for ModeIdInfoResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Nested {
-                body: serde_json::to_value(self).unwrap(),
-            }),
-        )
-    }
-}
+impl_into_mqtt_message!(ModeIdInfoResponse, nested);

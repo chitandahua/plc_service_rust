@@ -131,21 +131,6 @@ pub trait IntoMqttMessage {
     fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage;
 }
 
-// 会冲突 不能在此基础上再覆盖 rustc --explain E0119
-//impl<T> IntoMqttMessage for T
-//where
-//    T: serde::ser::Serialize,
-//{
-//    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-//        MqttMessage::new_with_req_info_body(
-//            mqtt_req_info,
-//            Some(PayloadBody::Flat
-//                serde_json::to_value(self).unwrap(),
-//            )),
-//        )
-//    }
-//}
-
 impl From<ConfirmResponse> for () {
     fn from(_value: ConfirmResponse) -> Self {}
 }
@@ -185,4 +170,31 @@ impl IntoMqttMessage for DenyResponse {
         let err: crate::Error = self.into();
         err.into_mqtt_message(mqtt_req_info)
     }
+}
+
+#[macro_export]
+macro_rules! impl_into_mqtt_message {
+    ($type:ty, nested) => {
+        impl IntoMqttMessage for $type {
+            fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+                MqttMessage::new_with_req_info_body(
+                    mqtt_req_info,
+                    Some(PayloadBody::Nested {
+                        body: serde_json::to_value(self).unwrap(),
+                    }),
+                )
+            }
+        }
+    };
+
+    ($type:ty, flat) => {
+        impl IntoMqttMessage for $type {
+            fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
+                MqttMessage::new_with_req_info_body(
+                    mqtt_req_info,
+                    Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
+                )
+            }
+        }
+    };
 }

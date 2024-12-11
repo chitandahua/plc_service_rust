@@ -18,7 +18,9 @@ use crate::service::parse_response::{
     uart_response_handler,
 };
 use crate::service::{IntoMqttMessage, UartResponse};
-use crate::{MqttMessage, MqttMsgHandler, MqttResponseError, Result, APP_NAME};
+use crate::{
+    impl_into_mqtt_message, MqttMessage, MqttMsgHandler, MqttResponseError, Result, APP_NAME,
+};
 
 const QUERY_NODE_NUMBER: u8 = 10;
 
@@ -203,16 +205,7 @@ impl From<ChipInfoResponse> for MqttChipInfoResponse {
     }
 }
 
-impl IntoMqttMessage for MqttChipInfoResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Nested {
-                body: serde_json::to_value(self).unwrap(),
-            }),
-        )
-    }
-}
+impl_into_mqtt_message!(MqttChipInfoResponse, nested);
 
 #[derive(Debug, Serialize)]
 struct MqttNodeLineInfo {
@@ -244,16 +237,7 @@ impl From<QueryNodeLineInfoResponse> for MqttNodeLineInfoResponse {
     }
 }
 
-impl IntoMqttMessage for MqttNodeLineInfoResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Nested {
-                body: serde_json::to_value(self).unwrap(),
-            }),
-        )
-    }
-}
+impl_into_mqtt_message!(MqttNodeLineInfoResponse, nested);
 
 type NodeLineInfoRequest = HplcInfoRequest;
 
@@ -330,16 +314,7 @@ impl From<IdInfoResponse> for MqttIdInfoResponse {
     }
 }
 
-impl IntoMqttMessage for MqttIdInfoResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Nested {
-                body: serde_json::to_value(self).unwrap(),
-            }),
-        )
-    }
-}
+impl_into_mqtt_message!(MqttIdInfoResponse, nested);
 
 impl HplcInfo {
     pub fn mqtt_get_id_info(message: MqttMessage, uart_msg_sender: &mpsc::Sender<UartMessage>) {
@@ -398,16 +373,7 @@ impl From<SlaveModuleIdResponse> for MqttSlaveModuleIdInfoResponse {
     }
 }
 
-impl IntoMqttMessage for MqttSlaveModuleIdInfoResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Nested {
-                body: serde_json::to_value(self).unwrap(),
-            }),
-        )
-    }
-}
+impl_into_mqtt_message!(MqttSlaveModuleIdInfoResponse, nested);
 
 type MqttSlaveModuleIdRequest = HplcInfoRequest;
 
@@ -625,14 +591,7 @@ impl From<MultipleNetResponse> for MqttMultipleNetInfoResponse {
     }
 }
 
-impl IntoMqttMessage for MqttMultipleNetInfoResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
-        )
-    }
-}
+impl_into_mqtt_message!(MqttMultipleNetInfoResponse, flat);
 
 impl HplcInfo {
     pub fn mqtt_get_multiple_net_info(
@@ -668,14 +627,7 @@ impl From<NetworkSizeResponse> for MqttNetworkSizeResponse {
     }
 }
 
-impl IntoMqttMessage for MqttNetworkSizeResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
-        )
-    }
-}
+impl_into_mqtt_message!(MqttNetworkSizeResponse, flat);
 
 impl HplcInfo {
     pub fn mqtt_get_network_size(

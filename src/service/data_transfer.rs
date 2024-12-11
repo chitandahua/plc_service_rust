@@ -4,7 +4,7 @@ use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::PayloadBody;
 use crate::protocol::app_data::{TransferFrameRequest, TransferFrameResponse};
 use crate::protocol::{Address, AddressField, Frame};
-use crate::ReqInfo;
+use crate::{impl_into_mqtt_message, ReqInfo};
 
 use crate::request_info::UartMessage;
 use crate::service::parse_response::UartResponse;
@@ -54,14 +54,7 @@ impl From<TransferFrameResponse> for MqttDataTransferResponse {
     }
 }
 
-impl IntoMqttMessage for MqttDataTransferResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
-        )
-    }
-}
+impl_into_mqtt_message!(MqttDataTransferResponse, flat);
 
 impl DataTransfer {
     pub fn new(metering: Arc<AtomicBool>) -> Self {

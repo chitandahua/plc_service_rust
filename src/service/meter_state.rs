@@ -6,7 +6,7 @@ use crate::protocol::app_data::{CurrentStatus, RunningStatusRequest, RunningStat
 use crate::request_info::{MqttReqInfo, UartMessage};
 use crate::service::parse_response::{mqtt_request_uart_handler, UartResponse};
 use crate::service::IntoMqttMessage;
-use crate::{ModuleInfo, MqttMsgHandler, Result, APP_NAME};
+use crate::{impl_into_mqtt_message, ModuleInfo, MqttMsgHandler, Result, APP_NAME};
 
 use chrono::DateTime;
 use std::sync::{mpsc, Arc, Mutex};
@@ -147,11 +147,4 @@ impl MeteringStateResponse {
     }
 }
 
-impl IntoMqttMessage for MeteringStateResponse {
-    fn into_mqtt_message(self, mqtt_req_info: MqttReqInfo) -> MqttMessage {
-        MqttMessage::new_with_req_info_body(
-            mqtt_req_info,
-            Some(PayloadBody::Flat(serde_json::to_value(self).unwrap())),
-        )
-    }
-}
+impl_into_mqtt_message!(MeteringStateResponse, flat);

@@ -12,8 +12,8 @@ use crate::service::parse_response::{
 };
 use crate::service::{IntoMqttMessage, UartResponse};
 use crate::{
-    impl_into_mqtt_message, protocol::app_data::Address, MqttMsgHandler, Result, UartMessage,
-    APP_NAME,
+    impl_into_mqtt_message, protocol::app_data::Address, register_mqtt_request_topics,
+    MqttMsgHandler, Result, UartMessage,
 };
 
 pub struct MasterAddress {
@@ -159,23 +159,20 @@ impl MasterAddress {
     }
 
     pub fn init(&self, mqtt_msg_handler: &mut MqttMsgHandler) {
-        use crate::config::SCHEMA_PATH;
-        use crate::schema_check;
-        const ADDRESS_OBJECT: &str = "/masterNode";
-        let get_address_topic = format!("{}{}{}", "+/get/request/", APP_NAME, ADDRESS_OBJECT);
-        let schema = schema_check::parse_schema(SCHEMA_PATH.join("get_address_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(
-            get_address_topic,
-            MqttTopicType::GetMasterAddress,
-            schema,
-        );
-
-        let set_address_topic = format!("{}{}{}", "+/set/request/", APP_NAME, ADDRESS_OBJECT);
-        let schema = schema_check::parse_schema(SCHEMA_PATH.join("set_address_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(
-            set_address_topic,
-            MqttTopicType::SetMasterAddress,
-            schema,
-        );
+        register_mqtt_request_topics!(
+            mqtt_msg_handler,
+            (
+                "set",
+                "masterNode",
+                MqttTopicType::SetMasterAddress,
+                "set_address_schema.json"
+            ),
+            (
+                "get",
+                "masterNode",
+                MqttTopicType::GetMasterAddress,
+                "get_address_schema.json"
+            )
+        )
     }
 }

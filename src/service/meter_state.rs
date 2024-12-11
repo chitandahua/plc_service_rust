@@ -6,7 +6,9 @@ use crate::protocol::app_data::{CurrentStatus, RunningStatusRequest, RunningStat
 use crate::request_info::{MqttReqInfo, UartMessage};
 use crate::service::parse_response::{mqtt_request_uart_handler, UartResponse};
 use crate::service::IntoMqttMessage;
-use crate::{impl_into_mqtt_message, ModuleInfo, MqttMsgHandler, Result, APP_NAME};
+use crate::{
+    impl_into_mqtt_message, register_mqtt_request_topics, ModuleInfo, MqttMsgHandler, Result,
+};
 
 use chrono::DateTime;
 use std::sync::{mpsc, Arc, Mutex};
@@ -38,12 +40,15 @@ impl MeterState {
     }
 
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
-        use crate::config::SCHEMA_PATH;
-        use crate::schema_check;
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/meteringState");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("get_metering_state_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::MeteringState, schema);
+        register_mqtt_request_topics!(
+            mqtt_msg_handler,
+            (
+                "get",
+                "meteringState",
+                MqttTopicType::MeteringState,
+                "get_metering_state_schema.json"
+            )
+        )
     }
 
     pub fn mqtt_get_metering_state(

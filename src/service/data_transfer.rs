@@ -8,7 +8,7 @@ use crate::{impl_into_mqtt_message, ReqInfo};
 
 use crate::request_info::UartMessage;
 use crate::service::parse_response::UartResponse;
-use crate::{MqttMessage, MqttMsgHandler, MqttResponseError, Result, APP_NAME};
+use crate::{register_mqtt_request_topics, MqttMessage, MqttMsgHandler, MqttResponseError, Result};
 
 use crate::service::{IntoMqttMessage, MqttReqInfo};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -66,11 +66,15 @@ impl DataTransfer {
     }
 
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
-        use crate::config::SCHEMA_PATH;
-        use crate::schema_check;
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/dataTrans");
-        let schema = schema_check::parse_schema(SCHEMA_PATH.join("data_transfer_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::DataTransfer, schema);
+        register_mqtt_request_topics!(
+            mqtt_msg_handler,
+            (
+                "get",
+                "dataTrans",
+                MqttTopicType::DataTransfer,
+                "data_transfer_schema.json"
+            ),
+        )
     }
 
     fn with_metering<F, T>(&self, f: F) -> T

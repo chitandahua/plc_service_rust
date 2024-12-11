@@ -3,7 +3,7 @@ use crate::protocol::app_data::{ConfirmResponse, PauseMetering, RestartMetering,
 use crate::protocol::AppData;
 use crate::request_info::UartMessage;
 use crate::service::parse_response::{mqtt_info_request_uart_handler, UartResponse};
-use crate::{MqttMessage, MqttMsgHandler, Result, APP_NAME};
+use crate::{register_mqtt_request_topics, MqttMessage, MqttMsgHandler, Result};
 
 use crate::service::IntoMqttMessage;
 use std::ops::DerefMut;
@@ -45,22 +45,27 @@ impl RouteCtrl {
     }
 
     pub fn init(&self, mqtt_msg_handler: &mut MqttMsgHandler) {
-        use crate::config::SCHEMA_PATH;
-        use crate::schema_check;
-        let topic = format!("{}{}{}", "+/set/request/", APP_NAME, "/pauseMetering");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("pause_metering_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::PauseMetering, schema);
-
-        let topic = format!("{}{}{}", "+/set/request/", APP_NAME, "/resumeMetering");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("resume_metering_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::ResumeMetering, schema);
-
-        let topic = format!("{}{}{}", "+/set/request/", APP_NAME, "/restartMetering");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("restart_metering_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::RestartMetering, schema);
+        register_mqtt_request_topics!(
+            mqtt_msg_handler,
+            (
+                "set",
+                "pauseMetering",
+                MqttTopicType::PauseMetering,
+                "pause_metering_schema.json"
+            ),
+            (
+                "set",
+                "resumeMetering",
+                MqttTopicType::ResumeMetering,
+                "resume_metering_schema.json"
+            ),
+            (
+                "set",
+                "restartMetering",
+                MqttTopicType::RestartMetering,
+                "restart_metering_schema.json"
+            )
+        )
     }
 
     fn update_metering_state(state: &mut MeteringState, meter_state: Option<MeterState>) {

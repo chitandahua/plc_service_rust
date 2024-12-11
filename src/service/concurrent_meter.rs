@@ -16,7 +16,9 @@ use crate::protocol::{AddressField, Frame};
 use crate::request_info::{MqttReqInfo, ReqInfo, UartMessage};
 use crate::service::parse_response::uart_response_handler;
 use crate::service::IntoMqttMessage;
-use crate::{MqttMessage, MqttMsgHandler, MqttResponseError, Result, APP_NAME};
+use crate::{
+    register_mqtt_request_topics, MqttMessage, MqttMsgHandler, MqttResponseError, Result, APP_NAME,
+};
 
 struct SampleCache {
     is_waiting_response: bool,
@@ -136,16 +138,15 @@ impl ConcurrentMeter {
     }
 
     pub fn init(&self, mqtt_msg_handler: &mut MqttMsgHandler) {
-        use crate::config::SCHEMA_PATH;
-        use crate::schema_check;
-        let concurrent_meter_topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/concurrent");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("concurrent_meter_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(
-            concurrent_meter_topic,
-            MqttTopicType::ConcurrentMeter,
-            schema,
-        );
+        register_mqtt_request_topics!(
+            mqtt_msg_handler,
+            (
+                "get",
+                "concurrent",
+                MqttTopicType::ConcurrentMeter,
+                "concurrent_meter_schema.json"
+            ),
+        )
     }
 
     fn concurrent_addr_num(sample_cache: &HashMap<String, SampleCache>) -> usize {

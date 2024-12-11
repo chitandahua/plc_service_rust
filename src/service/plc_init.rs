@@ -6,7 +6,10 @@ use crate::mqtt_handler::MqttTopicType;
 use crate::protocol::app_data::{ConfirmResponse, InitOperation, InitRequest};
 use crate::protocol::Address;
 use crate::request_info::UartMessage;
-use crate::{MeterState, ModuleInfo, ModuleService, MqttMessage, MqttMsgHandler, Result, APP_NAME};
+use crate::{
+    register_mqtt_request_topics, MeterState, ModuleInfo, ModuleService, MqttMessage,
+    MqttMsgHandler, Result,
+};
 
 use crate::service::parse_response::{mqtt_request_uart_handler, uart_response_handler};
 enum InitEvent {
@@ -171,11 +174,15 @@ pub enum PlcInitError {
 
 impl PlcInit {
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
-        use crate::config::SCHEMA_PATH;
-        use crate::schema_check;
-        let topic = format!("{}{}{}", "+/set/request/", APP_NAME, "/dataInit");
-        let schema = schema_check::parse_schema(SCHEMA_PATH.join("data_init_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::DataInit, schema);
+        register_mqtt_request_topics!(
+            mqtt_msg_handler,
+            (
+                "set",
+                "dataInit",
+                MqttTopicType::DataInit,
+                "data_init_schema.json"
+            )
+        );
     }
 
     pub fn mqtt_data_init(message: MqttMessage, uart_msg_sender: &mpsc::Sender<UartMessage>) {

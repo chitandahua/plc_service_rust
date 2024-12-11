@@ -8,10 +8,10 @@ use crate::protocol::app_data::{
 
 use crate::request_info::UartMessage;
 use crate::service::parse_response::{mqtt_request_handler, uart_response_handler};
-use crate::{MqttMessage, MqttMsgHandler, Result, APP_NAME};
+use crate::{MqttMessage, MqttMsgHandler, Result};
 
-use crate::impl_into_mqtt_message;
 use crate::service::{IntoMqttMessage, MqttReqInfo, RouteCtrl};
+use crate::{impl_into_mqtt_message, register_mqtt_request_topics};
 use std::sync::mpsc;
 
 #[derive(Clone)]
@@ -55,16 +55,21 @@ impl From<MqttBroadCastCmdRequest> for BroadcastRequest {
 
 impl Broadcast {
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
-        use crate::config::SCHEMA_PATH;
-        use crate::schema_check;
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/BroadcastDelay");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("broadcast_delay_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::BroadcastDelay, schema);
-
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/BroadcastCmd");
-        let schema = schema_check::parse_schema(SCHEMA_PATH.join("broadcast_cmd_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::BroadcastCmd, schema);
+        register_mqtt_request_topics!(
+            mqtt_msg_handler,
+            (
+                "get",
+                "BroadcastDelay",
+                MqttTopicType::BroadcastDelay,
+                "broadcast_delay_schema.json"
+            ),
+            (
+                "get",
+                "BroadcastCmd",
+                MqttTopicType::BroadcastCmd,
+                "broadcast_cmd_schema.json"
+            ),
+        )
     }
 
     pub fn mqtt_get_broadcast_delay(

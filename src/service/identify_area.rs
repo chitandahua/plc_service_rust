@@ -13,7 +13,9 @@ use crate::service::parse_response::{
 };
 use crate::service::{IntoMqttMessage, RouteCtrl, UartResponse};
 
-use crate::{MqttResponseError, ReqInfo, Result, UartMessage, APP_NAME};
+use crate::{
+    register_mqtt_request_topics, MqttResponseError, ReqInfo, Result, UartMessage, APP_NAME,
+};
 
 use serde::{Deserialize, Serialize};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
@@ -92,21 +94,27 @@ impl IdentifyArea {
     }
 
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
-        use crate::config::SCHEMA_PATH;
-        use crate::schema_check;
-        let topic = format!("{}{}{}", "+/set/request/", APP_NAME, "/identiAreaCfg");
-        let schema = schema_check::parse_schema(SCHEMA_PATH.join("identify_area_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::IdentifyArea, schema);
-
-        let topic = format!("{}{}{}", "+/set/request/", APP_NAME, "/enSearchMeter");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("enable_search_meter_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::EnableSearchMeter, schema);
-
-        let topic = format!("{}{}{}", "+/set/request/", APP_NAME, "/disSearchMeter");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("disable_search_meter_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::DisableSearchMeter, schema);
+        register_mqtt_request_topics!(
+            mqtt_msg_handler,
+            (
+                "set",
+                "identiAreaCfg",
+                MqttTopicType::IdentifyArea,
+                "identify_area_schema.json"
+            ),
+            (
+                "set",
+                "enSearchMeter",
+                MqttTopicType::EnableSearchMeter,
+                "enable_search_meter_schema.json"
+            ),
+            (
+                "set",
+                "disSearchMeter",
+                MqttTopicType::DisableSearchMeter,
+                "disable_search_meter_schema.json"
+            ),
+        )
     }
 }
 

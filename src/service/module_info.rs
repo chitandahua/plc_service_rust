@@ -14,7 +14,10 @@ use crate::service::parse_response::{
     mqtt_info_request_uart_handler, mqtt_request_uart_handler, uart_response_handler, UartResponse,
 };
 use crate::service::IntoMqttMessage;
-use crate::{impl_into_mqtt_message, MqttMessage, MqttMsgHandler, ReqInfo, Result, APP_NAME};
+use crate::{
+    impl_into_mqtt_message, register_mqtt_request_topics, MqttMessage, MqttMsgHandler, ReqInfo,
+    Result,
+};
 
 pub struct ModuleInfo;
 
@@ -99,24 +102,33 @@ impl ModuleInfo {
     }
 
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
-        use crate::config::SCHEMA_PATH;
-        use crate::schema_check;
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/moduleInfo");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("get_module_info_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetModuleInfo, schema);
-
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/hostModeID");
-        let schema = schema_check::parse_schema(SCHEMA_PATH.join("get_master_id_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetMasterIdInfo, schema);
-
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/hplcFreq");
-        let schema = schema_check::parse_schema(SCHEMA_PATH.join("get_hplc_freq_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetHplcFreq, schema);
-
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/modeInfo");
-        let schema = schema_check::parse_schema(SCHEMA_PATH.join("get_mode_info_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetModeInfo, schema);
+        register_mqtt_request_topics!(
+            mqtt_msg_handler,
+            (
+                "get",
+                "moduleInfo",
+                MqttTopicType::GetModuleInfo,
+                "get_module_info_schema.json"
+            ),
+            (
+                "get",
+                "hostModeID",
+                MqttTopicType::GetMasterIdInfo,
+                "get_master_id_schema.json"
+            ),
+            (
+                "get",
+                "hplcFreq",
+                MqttTopicType::GetHplcFreq,
+                "get_hplc_freq_schema.json"
+            ),
+            (
+                "get",
+                "modeInfo",
+                MqttTopicType::GetModeInfo,
+                "get_mode_info_schema.json"
+            )
+        )
     }
 }
 

@@ -5,8 +5,8 @@ use crate::protocol::{Address, AddressField, Frame};
 use crate::request_info::FrameKey;
 use crate::service::{parse_response::UartResponse, MqttReqInfo};
 use crate::{
-    impl_into_mqtt_message, MqttMessage, MqttMsgHandler, MqttResponseError, ReqInfo, Result,
-    UartMessage, APP_NAME,
+    impl_into_mqtt_message, register_mqtt_request_topics, MqttMessage, MqttMsgHandler,
+    MqttResponseError, ReqInfo, Result, UartMessage,
 };
 
 use serde::{Deserialize, Serialize};
@@ -165,16 +165,21 @@ impl MonitorNode {
     }
 
     pub fn init(&self, mqtt_msg_handler: &mut MqttMsgHandler) {
-        use crate::config::SCHEMA_PATH;
-        use crate::schema_check;
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/monitorNode");
-        let schema = schema_check::parse_schema(SCHEMA_PATH.join("monitor_node_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::MonitorNode, schema);
-
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/monitorNodeDelay");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("monitor_node_delay_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::MonitorNodeDelay, schema);
+        register_mqtt_request_topics!(
+            mqtt_msg_handler,
+            (
+                "get",
+                "monitorNode",
+                MqttTopicType::MonitorNode,
+                "monitor_node_schema.json"
+            ),
+            (
+                "get",
+                "monitorNodeDelay",
+                MqttTopicType::MonitorNodeDelay,
+                "monitor_node_delay_schema.json"
+            )
+        )
     }
 
     fn wait_for_response(&self) -> Result<MonitorNodeResponse> {

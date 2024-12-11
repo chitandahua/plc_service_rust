@@ -19,7 +19,8 @@ use crate::service::parse_response::{
 };
 use crate::service::{IntoMqttMessage, UartResponse};
 use crate::{
-    impl_into_mqtt_message, MqttMessage, MqttMsgHandler, MqttResponseError, Result, APP_NAME,
+    impl_into_mqtt_message, register_mqtt_request_topics, MqttMessage, MqttMsgHandler,
+    MqttResponseError, Result,
 };
 
 const QUERY_NODE_NUMBER: u8 = 10;
@@ -128,44 +129,57 @@ impl HplcInfo {
     }
 
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
-        use crate::config::SCHEMA_PATH;
-        use crate::schema_check;
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/chipInformation");
-        let schema = schema_check::parse_schema(SCHEMA_PATH.join("get_chip_info_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetChipInfo, schema);
-
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/idInformation");
-        let schema = schema_check::parse_schema(SCHEMA_PATH.join("get_id_info_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetIdInfo, schema);
-
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/nodeLineInformation");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("get_node_line_info_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetNodeLineInfo, schema);
-
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/slaveModeID");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("get_slave_module_id_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetSlaveModuleId, schema);
-
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/netTopoInfo");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("get_net_topology_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetNetTopology, schema);
-
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/multiNetInformation");
-        let schema = schema_check::parse_schema(SCHEMA_PATH.join("get_multi_net_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetMultiNet, schema);
-
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/networkSize");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("get_network_size_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetNetworkSize, schema);
-
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/nodeversion");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("get_node_version_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::GetNodeVersion, schema);
+        register_mqtt_request_topics!(
+            mqtt_msg_handler,
+            (
+                "get",
+                "chipInformation",
+                MqttTopicType::GetChipInfo,
+                "get_chip_info_schema.json"
+            ),
+            (
+                "get",
+                "idInformation",
+                MqttTopicType::GetIdInfo,
+                "get_id_info_schema.json"
+            ),
+            (
+                "get",
+                "nodeLineInformation",
+                MqttTopicType::GetNodeLineInfo,
+                "get_node_line_info_schema.json"
+            ),
+            (
+                "get",
+                "slaveModeID",
+                MqttTopicType::GetSlaveModuleId,
+                "get_slave_module_id_schema.json"
+            ),
+            (
+                "get",
+                "netTopoInfo",
+                MqttTopicType::GetNetTopology,
+                "get_net_topology_schema.json"
+            ),
+            (
+                "get",
+                "multiNetInformation",
+                MqttTopicType::GetMultiNet,
+                "get_multi_net_schema.json"
+            ),
+            (
+                "get",
+                "networkSize",
+                MqttTopicType::GetNetworkSize,
+                "get_network_size_schema.json"
+            ),
+            (
+                "get",
+                "nodeversion",
+                MqttTopicType::GetNodeVersion,
+                "get_node_version_schema.json"
+            ),
+        );
     }
 }
 

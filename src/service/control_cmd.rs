@@ -4,7 +4,7 @@ use crate::mqtt_handler::MqttTopicType;
 use crate::protocol::app_data::{ConfirmResponse, HplcFrequencySetRequest, SlaveReportRequest};
 
 use crate::request_info::UartMessage;
-use crate::{MqttMessage, MqttMsgHandler, Result, APP_NAME};
+use crate::{register_mqtt_request_topics, MqttMessage, MqttMsgHandler, Result};
 
 use crate::service::parse_response::{mqtt_request_handler, uart_response_handler};
 
@@ -37,17 +37,21 @@ impl From<MqttRefuseSlaveReportRequest> for SlaveReportRequest {
 
 impl ControlCmd {
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
-        use crate::config::SCHEMA_PATH;
-        use crate::schema_check;
-        let topic = format!("{}{}{}", "+/set/request/", APP_NAME, "/hplcFreq");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("hplc_frequency_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::HplcFrequency, schema);
-
-        let topic = format!("{}{}{}", "+/set/request/", APP_NAME, "/refuseNodeReportCfg");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("refuse_slave_report_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::RefuseSlaveReport, schema);
+        register_mqtt_request_topics!(
+            mqtt_msg_handler,
+            (
+                "set",
+                "hplcFreq",
+                MqttTopicType::HplcFrequency,
+                "hplc_frequency_schema.json"
+            ),
+            (
+                "set",
+                "refuseNodeReportCfg",
+                MqttTopicType::RefuseSlaveReport,
+                "refuse_slave_report_schema.json"
+            ),
+        )
     }
 
     pub fn mqtt_set_hplc_frequency(

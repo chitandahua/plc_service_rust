@@ -6,7 +6,7 @@ use crate::mqtt_message::PayloadBody;
 use crate::protocol::app_data::Afn;
 use crate::protocol::Frame;
 use crate::request_info::{FrameKey, UartMessage};
-use crate::{MqttMessage, MqttMsgHandler, ReqInfo, Result, APP_NAME};
+use crate::{register_mqtt_request_topics, MqttMessage, MqttMsgHandler, ReqInfo, Result};
 
 pub struct DebugMethod;
 
@@ -52,11 +52,14 @@ impl DebugMethod {
     }
 
     pub fn init(mqtt_msg_handler: &mut MqttMsgHandler) {
-        use crate::config::SCHEMA_PATH;
-        use crate::schema_check;
-        let topic = format!("{}{}{}", "+/get/request/", APP_NAME, "/sendFrame");
-        let schema =
-            schema_check::parse_schema(SCHEMA_PATH.join("send_debug_frame_schema.json")).ok();
-        mqtt_msg_handler.add_topic_filter(topic, MqttTopicType::SendDebugFrame, schema);
+        register_mqtt_request_topics!(
+            mqtt_msg_handler,
+            (
+                "get",
+                "sendFrame",
+                MqttTopicType::SendDebugFrame,
+                "send_debug_frame_schema.json"
+            ),
+        )
     }
 }

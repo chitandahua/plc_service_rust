@@ -526,3 +526,20 @@ impl MqttHandler for Handler {
         self.topics.to_owned()
     }
 }
+
+#[macro_export]
+macro_rules! register_mqtt_request_topics {
+    ($handler:expr, $( ($operator:expr, $suffix:expr, $type:expr, $schema_file:expr) ),* $(,)?) => {
+        {
+        use $crate::config::SCHEMA_PATH;
+        use $crate::{schema_check, APP_NAME};
+        $(
+            {
+                let topic = format!("+/{}/request/{}/{}", $operator, APP_NAME, $suffix);
+                let schema = schema_check::parse_schema(SCHEMA_PATH.join($schema_file)).ok();
+                $handler.add_topic_filter(topic, $type, schema);
+            }
+        )*
+    }
+    };
+}

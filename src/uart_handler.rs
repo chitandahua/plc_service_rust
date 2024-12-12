@@ -4,8 +4,8 @@ use tracing::debug;
 
 use crate::mqtt_message::Status;
 use crate::protocol::app_data::{
-    ActiveReport, Afn, CtrlCmd, DataForward, DataTransfer, InitOperation, MeterControl,
-    MeterReading, QueryData, RouteDataRead, RouteQuery, RouteSet,
+    ActiveReport, Afn, CtrlCmd, DataForward, DataTransfer, FileTransfer, InitOperation,
+    MeterControl, MeterReading, QueryData, RouteDataRead, RouteQuery, RouteSet,
 };
 use crate::request_info::{MqttReqInfo, ReqInfo};
 use crate::service::{
@@ -111,7 +111,10 @@ impl UartMsgHandler {
 
     fn uart_init_handler(&mut self, message: UartMessage) -> Result<()> {
         let init_err_msg = "uart init invalid message";
-        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        let (afn, fn_num) = match message.extra_req_info {
+            Some(ref extra_req_info) => extra_req_info.frame_key().to_tuple(),
+            None => message.req_info.frame_key().to_tuple(),
+        };
         if afn == Afn::QueryData {
             let fn_num = QueryData::try_from(fn_num).expect(init_err_msg);
             match fn_num {
@@ -162,10 +165,17 @@ impl UartMsgHandler {
                     // 内部搜表时 查询运行状态 工作标志 搜表是否结束
                     let fn_num = RouteQuery::try_from(fn_num).expect("invalid route get fn");
                     match fn_num {
-                        RouteQuery::RunningStatus => self
-                            .services
-                            .identify_area
-                            .uart_search_meter_running_status(message)?,
+                        RouteQuery::RunningStatus => match message.req_info.frame_key().afn() {
+                            Afn::RouteSet => self
+                                .services
+                                .identify_area
+                                .uart_search_meter_running_status(message)?,
+                            Afn::FileTransfer => self
+                                .services
+                                .file_upgrade
+                                .uart_file_transfer_finish(message)?,
+                            _ => unreachable!(),
+                        },
                         _ => unreachable!(),
                     }
                 }
@@ -337,6 +347,15 @@ impl UartMsgHandler {
         }
     }
 
+    fn uart_file_transfer_handler(&mut self, message: UartMessage) -> Result<()> {
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
+        let fn_num = FileTransfer::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
+        match fn_num {
+            FileTransfer::Method => self.services.file_upgrade.uart_file_transfer(message),
+        }
+    }
+
     fn uart_read_meter_handler(&mut self, message: UartMessage) -> Result<()> {
         let (afn, fn_num) = message.req_info.frame_key().to_tuple();
         let fn_num = MeterReading::try_from(fn_num)
@@ -388,6 +407,7 @@ impl UartMsgHandler {
             Afn::RouteGet => self.uart_route_query_handler(message),
             Afn::RouteCtrl => self.uart_route_ctrl_handler(message),
             Afn::RouteDataForward => self.uart_route_data_forward_handler(message),
+            Afn::FileTransfer => self.uart_file_transfer_handler(message),
             Afn::CocurrentReadMeter => self.uart_read_meter_handler(message),
             Afn::Test => self.uart_test_handler(message),
             _ => anyhow::bail!(UartHandlerError::UnsupportedAfn(afn)),
@@ -469,6 +489,7 @@ impl UartTimeoutHandler {
             Afn::DataForward => self.handle_data_forward_timeout(fn_num)?,
             Afn::RouteDataRead => self.handle_route_data_read_timeout(fn_num, extra_req_info)?,
             Afn::RouteGet => self.handle_route_get_timeout(fn_num, req_info)?,
+            Afn::FileTransfer => self.handle_file_transfer_timeout(fn_num, req_info)?,
             _ => self.default_timeout_handler(req_info),
         }
 
@@ -577,6 +598,17 @@ impl UartTimeoutHandler {
                 self.services.hplc_info.uart_hplc_info_response_timeout();
             }
             _ => self.default_timeout_handler(req_info),
+        }
+        Ok(())
+    }
+
+    fn handle_file_transfer_timeout(&self, fn_num: u8, _req_info: ReqInfo) -> Result<()> {
+        let fn_num = FileTransfer::try_from(fn_num)
+            .map_err(|_| UartHandlerError::UnsupportedAfnFn(Afn::FileTransfer, fn_num))?;
+        match fn_num {
+            FileTransfer::Method => {
+                self.services.file_upgrade.uart_file_transfer_timeout();
+            }
         }
         Ok(())
     }

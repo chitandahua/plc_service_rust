@@ -19,6 +19,9 @@ pub use device_info::DeviceInfo;
 mod event_report;
 pub use event_report::EventReport;
 
+mod file_upgrade;
+pub use file_upgrade::FileUpgrade;
+
 mod hplc_info;
 pub use hplc_info::HplcInfo;
 
@@ -80,6 +83,7 @@ pub struct ModuleService {
     pub identify_area: IdentifyArea,
     pub hplc_info: HplcInfo,
     pub thread_pool: ThreadPool,
+    pub file_upgrade: FileUpgrade,
 }
 
 impl ModuleService {
@@ -105,6 +109,7 @@ impl ModuleService {
             identify_area: IdentifyArea::new(),
             hplc_info: HplcInfo::new(),
             thread_pool: ThreadPool::new(2),
+            file_upgrade: FileUpgrade::new(),
         })
     }
 
@@ -124,6 +129,7 @@ impl ModuleService {
         IdentifyArea::init(mqtt_msg_handler);
         ControlCmd::init(mqtt_msg_handler);
         PlcInit::init(mqtt_msg_handler);
+        FileUpgrade::init(mqtt_msg_handler);
     }
 }
 

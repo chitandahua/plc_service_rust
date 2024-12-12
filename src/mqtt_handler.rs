@@ -140,6 +140,9 @@ pub enum MqttTopicType {
     RefuseSlaveReport,
     // 初始化
     DataInit,
+    // 升级
+    FileUpgrade,
+    UpgradeState,
 }
 
 struct MqttTopicFilter {
@@ -446,6 +449,18 @@ impl MqttMsgHandler {
                             );
                             Ok(())
                         }
+                        MqttTopicType::FileUpgrade => services.file_upgrade.mqtt_file_upgrade(
+                            message,
+                            &mqtt_msg_sender,
+                            &uart_msg_sender,
+                            &services.thread_pool,
+                        ),
+                        MqttTopicType::UpgradeState => {
+                            services
+                                .file_upgrade
+                                .mqtt_file_upgrade_status(message, &mqtt_msg_sender);
+                            Ok(())
+                        }
                     };
 
                 if let Err(e) = result {
@@ -531,15 +546,15 @@ impl MqttHandler for Handler {
 macro_rules! register_mqtt_request_topics {
     ($handler:expr, $( ($operator:expr, $suffix:expr, $type:expr, $schema_file:expr) ),* $(,)?) => {
         {
-        use $crate::config::SCHEMA_PATH;
-        use $crate::{schema_check, APP_NAME};
-        $(
-            {
-                let topic = format!("+/{}/request/{}/{}", $operator, APP_NAME, $suffix);
-                let schema = schema_check::parse_schema(SCHEMA_PATH.join($schema_file)).ok();
-                $handler.add_topic_filter(topic, $type, schema);
-            }
-        )*
-    }
+            use $crate::config::SCHEMA_PATH;
+            use $crate::{schema_check, APP_NAME};
+            $(
+                {
+                    let topic = format!("+/{}/request/{}/{}", $operator, APP_NAME, $suffix);
+                    let schema = schema_check::parse_schema(SCHEMA_PATH.join($schema_file)).ok();
+                    $handler.add_topic_filter(topic, $type, schema);
+                }
+            )*
+        }
     };
 }

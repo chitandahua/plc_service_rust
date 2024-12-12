@@ -23,6 +23,9 @@ pub use ctrl_cmd::{
 mod data_trans;
 pub use data_trans::{DataTransfer, TransferFrameRequest, TransferFrameResponse};
 
+mod file_transfer;
+pub use file_transfer::{FileFlag, FileTransfer, FileTransferRequest, FileTransferResponse};
+
 mod init;
 pub use init::{InitOperation, InitRequest};
 

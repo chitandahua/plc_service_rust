@@ -128,15 +128,15 @@ impl MonitorNodeOperation for MonitorNodeDataRequest {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct MonitorNodeDelayResponse {
-    pub delay: u16,
+struct MonitorNodeDelayResponse {
+    delay: u16,
 }
 
 impl_into_mqtt_message!(MonitorNodeDelayResponse, flat);
 
 #[derive(Debug, Serialize)]
-pub(crate) struct MonitorNodeDataResponse {
-    pub data: String,
+struct MonitorNodeDataResponse {
+    data: String,
 }
 
 impl From<app_data::MonitorNodeResponse> for MonitorNodeDataResponse {
@@ -150,7 +150,7 @@ impl From<app_data::MonitorNodeResponse> for MonitorNodeDataResponse {
 impl_into_mqtt_message!(MonitorNodeDataResponse, flat);
 
 #[derive(Debug)]
-pub(crate) enum MonitorNodeResponse {
+enum MonitorNodeResponse {
     Delay(MonitorNodeDelayResponse),
     Data(MonitorNodeDataResponse),
 }

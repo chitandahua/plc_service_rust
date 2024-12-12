@@ -1,6 +1,5 @@
 use serde::Serialize;
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::mpsc;
+use std::sync::{mpsc, OnceLock};
 
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::{MqttPayload, PayloadBody};
@@ -21,7 +20,7 @@ use crate::{
 
 pub struct ModuleInfo;
 
-static AUTO_READING: AtomicU8 = AtomicU8::new(0);
+pub static MODULE_INFO: OnceLock<app_data::ModuleInfoResponse> = OnceLock::new();
 
 impl ModuleInfo {
     pub fn slave_module_info_report(
@@ -38,9 +37,9 @@ impl ModuleInfo {
                 let req_info = ReqInfo::new(&response_frame, None);
                 let _ = uart_msg_sender.send(UartMessage::new(req_info, response_frame));
 
-                AUTO_READING.store(response.metering_mode & 0x10, Ordering::Relaxed);
-
-                Ok(response.main_node_addr)
+                let address = response.main_node_addr.clone();
+                MODULE_INFO.get_or_init(move || response);
+                Ok(address)
             }
         }
     }
@@ -51,14 +50,17 @@ impl ModuleInfo {
         match response {
             UartResponse::Deny(response) => Err(response.into()),
             UartResponse::Normal(response) => {
-                AUTO_READING.store(response.metering_mode & 0x10, Ordering::Relaxed);
-                Ok(response.main_node_addr)
+                let address = response.main_node_addr.clone();
+                MODULE_INFO.get_or_init(move || response);
+                Ok(address)
             }
         }
     }
 
     pub fn auto_reading_meter() -> u8 {
-        AUTO_READING.load(Ordering::Relaxed)
+        MODULE_INFO
+            .get()
+            .map_or(0, |info| info.metering_mode & 0x10)
     }
 
     pub fn module_info_response(
@@ -175,7 +177,7 @@ impl ModuleInfo {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct HplcFrequencyResponse {
+struct HplcFrequencyResponse {
     #[serde(rename = "hplcFreq")]
     hplc_freq: u8,
 }
@@ -210,7 +212,7 @@ impl ModuleInfo {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct ModuleInfoResponse {
+struct ModuleInfoResponse {
     #[serde(rename = "communicationMode")]
     communication_mode: String,
     #[serde(rename = "slaveMonitorOvertime")]
@@ -274,7 +276,7 @@ impl IntoMqttMessage for ModuleInfoResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct ModeIdInfoResponse {
+struct ModeIdInfoResponse {
     #[serde(rename = "vendorCode")]
     vendor_code: String,
     #[serde(rename = "modeIDLen")]

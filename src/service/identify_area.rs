@@ -2,11 +2,12 @@ use crate::mqtt_handler::{MqttMsgHandler, MqttTopicType};
 use crate::mqtt_message::{MqttMessage, MqttPayload, PayloadBody};
 use crate::mqtt_topic::MqttTopic;
 use crate::protocol::app_data::{
-    ActiveNodeRegisterRequest, ConfirmResponse, IdentifyAreaSetRequest,
-    ReportNodeInfoAndDeviceType, ReportWorkStatus, RunningStatusRequest, RunningStatusResponse,
-    StopNodeRegisterRequest, WorkStatusType,
+    ActiveNodeRegisterRequest, Afn, ConfirmResponse, IdentifyAreaSetRequest,
+    ReportNodeInfoAndDeviceType, ReportWorkStatus, RouteSet, RunningStatusRequest,
+    RunningStatusResponse, StopNodeRegisterRequest, WorkStatusType,
 };
 use crate::protocol::Frame;
+use crate::request_info::FrameKey;
 
 use crate::service::parse_response::{
     mqtt_request_handler, mqtt_request_uart_handler, uart_response_handler,
@@ -224,7 +225,17 @@ impl IdentifyArea {
                         let frame = Frame::new_request(None, RunningStatusRequest);
                         let req_info = ReqInfo::new(&frame, None);
                         uart_msg_sender
-                            .send(UartMessage::new(req_info, frame))
+                            .send(UartMessage::new_with_extra_req_info(
+                                req_info,
+                                frame,
+                                Some(ReqInfo::new_with_key_no_seq(
+                                    FrameKey::new(
+                                        Afn::RouteSet,
+                                        RouteSet::ActiveNodeRegister as u8,
+                                    ),
+                                    None,
+                                )),
+                            ))
                             .unwrap();
 
                         // 等待回复

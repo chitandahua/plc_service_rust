@@ -181,7 +181,7 @@ impl From<&[u8]> for NodeDetail {
             src_addr: data[0..6].try_into().unwrap(),
             listen_signal_quality: data[6] >> 4,
             relay_level: data[6] & 0x0F,
-            comm_protocol_type: (data[7] >> 3) & 0xfe,
+            comm_protocol_type: (data[7] >> 3) & 0x07,
             phase: data[7] & 0x07,
         }
     }
@@ -866,7 +866,7 @@ mod tests {
     #[test]
     fn test_query_node_info_response() {
         let frame = tests_common::create_frame_from_hex(
-            "681a0083000010000000100200010001025000022222f0144316",
+            "681a0083000010000000100200010001025000022222f81c5316",
         );
         let response = QueryNodeInfoResponse {
             total_node_number: 0x0001,
@@ -874,8 +874,8 @@ mod tests {
             node_infos: vec![NodeDetail {
                 src_addr: Address::new([0x22, 0x22, 0x02, 0x00, 0x50, 0x02]),
                 listen_signal_quality: 0x0f,
-                relay_level: 0x00,
-                comm_protocol_type: 0x02,
+                relay_level: 0x08,
+                comm_protocol_type: 0x03,
                 phase: 0x04,
             }],
         };

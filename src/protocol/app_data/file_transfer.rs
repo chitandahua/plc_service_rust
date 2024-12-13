@@ -11,7 +11,7 @@ pub enum FileTransfer {
     Method = 1,
 }
 
-#[derive(Debug, TryFromPrimitive, Clone, Copy)]
+#[derive(Debug, TryFromPrimitive, Clone, Copy, PartialEq)]
 #[repr(u8)]
 pub enum FileFlag {
     Clear = 0,
@@ -69,7 +69,7 @@ impl From<FileTransferRequest> for AppData {
     }
 }
 
-pub const _FILE_CHECK_ERROR: u32 = 0xffff;
+pub const FILE_CHECK_ERROR: u32 = 0xffff;
 pub struct FileTransferResponse {
     pub segment_flag: u32,
 }

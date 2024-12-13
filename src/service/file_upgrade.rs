@@ -11,7 +11,7 @@ use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::{MqttMessage, PayloadBody};
 use crate::protocol::app_data::{
     Afn, CurrentStatus, FileFlag, FileTransfer, FileTransferRequest, FileTransferResponse,
-    RunningStatusRequest, RunningStatusResponse,
+    RunningStatusRequest, RunningStatusResponse, FILE_CHECK_ERROR
 };
 use crate::protocol::Frame;
 use crate::request_info::{FrameKey, ReqInfo, UartMessage};
@@ -47,6 +47,7 @@ struct FileUpgradeState {
     end_time: NaiveDateTime,
     upgrade_result: UpgradeResult,
     result: Option<Result<usize>>,
+    upgrading: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -75,10 +76,17 @@ impl From<&FileUpgradeState> for MqttFileUpgradeResponse {
 }
 
 impl FileUpgradeState {
-    fn set_upgrade_result(&mut self, upgrate_result: UpgradeResult) {
+    fn start_upgrade(&mut self) {
+        self.upgrading = true;
+        self.status = UpgradeStatus::Idle;
+        self.start_time = chrono::Local::now().naive_local(); // TODO 等待传输完成才开始？
+    }
+
+    fn finish_upgrade(&mut self, upgrate_result: UpgradeResult) {
         self.status = UpgradeStatus::Finished;
         self.end_time = chrono::Local::now().naive_local();
         self.upgrade_result = upgrate_result;
+        self.upgrading = false;
     }
 }
 
@@ -129,13 +137,28 @@ impl FileUpgrade {
         thread_pool: &ThreadPool,
     ) -> Result<()> {
         tracing::debug!("mqtt file upgrade");
-        // 回复确认
-        mqtt_msg_sender
-            .send(().into_mqtt_message(message.to_mqtt_req_info()))
-            .unwrap();
 
-        const FILE_DATA_SIZE: usize = 128;
+        const FILE_DATA_SIZE: usize = 128; // 1024
         let request: MqttFileUpgradeRequest = serde_json::from_str(message.payload())?;
+        // 读文件到buffer中
+        let mut file = match File::open(&request.file_path) {
+            Ok(file) => {
+                mqtt_msg_sender
+                    .send(().into_mqtt_message(message.to_mqtt_req_info()))
+                    .unwrap();
+                file
+            }
+            Err(e) => {
+                tracing::error!(cause = ?e, "open file {} failed", request.file_path);
+                mqtt_msg_sender
+                    .send(
+                        anyhow::anyhow!(MqttResponseError::InvalidUpgradeFile)
+                            .into_mqtt_message(message.to_mqtt_req_info()),
+                    )
+                    .unwrap();
+                return Ok(());
+            }
+        };
 
         let file_flag = match request.flag {
             0 => FileFlag::Module,
@@ -147,24 +170,23 @@ impl FileUpgrade {
         // 传输文件
         {
             let mut state = self.upgrade_state.lock().unwrap();
-            state.status = UpgradeStatus::Idle;
-            state.start_time = chrono::Local::now().naive_local(); // TODO 等待传输完成才开始？
-
-            // 读文件到buffer中
-            let mut file = match File::open(&request.file_path) {
-                Ok(file) => file,
-                Err(e) => {
-                    tracing::error!(cause = ?e, "open file {} failed", request.file_path);
-                    state.set_upgrade_result(UpgradeResult::FileError);
-                    return Ok(());
-                }
-            };
+            if state.upgrading {
+                mqtt_msg_sender
+                    .send(
+                        anyhow::anyhow!(MqttResponseError::AlreadyUpgrading)
+                            .into_mqtt_message(message.to_mqtt_req_info()),
+                    )
+                    .unwrap();
+                return Ok(());
+            }
+            state.start_upgrade();
 
             let mut content = Vec::new();
             file.read_to_end(&mut content).unwrap();
             let segment_num = content.len() / FILE_DATA_SIZE;
 
             for (segment_offset, file_data) in content.chunks(FILE_DATA_SIZE).enumerate() {
+                // TODO 子模块升级需要设置通信模块标识以及地址域？
                 mqtt_info_request_uart_handler::<FileTransferRequest>(
                     FileTransferRequest::new(
                         file_flag,
@@ -181,20 +203,25 @@ impl FileUpgrade {
                     .wait_while(state, |state| state.result.is_none())
                     .unwrap();
 
+                let mut upgrade_result = UpgradeResult::TransferFailed;
                 let result = state.result.take().unwrap().and_then(|segment| {
                     if segment != segment_offset {
                         Err(anyhow::anyhow!(format!(
                             "segment number not match, expect {}, got {}",
                             segment_offset, segment
                         )))
-                    } else {
+                    } else if segment as u32 == FILE_CHECK_ERROR {
+                        upgrade_result = UpgradeResult::FileError;
+                        Err(anyhow::anyhow!("file check error"))
+                    }
+                    else {
                         Ok(())
                     }
                 });
 
                 if let Err(e) = result {
                     tracing::error!(cause = ?e, "uart file transfer failed");
-                    state.set_upgrade_result(UpgradeResult::TransferFailed);
+                    state.finish_upgrade(upgrade_result);
                     return Ok(());
                 }
             }
@@ -242,7 +269,7 @@ impl FileUpgrade {
                     }
                 }
 
-                state.set_upgrade_result(UpgradeResult::Success);
+                state.finish_upgrade(UpgradeResult::Success);
             }
         });
 

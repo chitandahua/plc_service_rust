@@ -69,7 +69,7 @@ impl From<FileTransferRequest> for AppData {
     }
 }
 
-pub const FILE_CHECK_ERROR: u32 = 0xffff;
+pub const FILE_CHECK_ERROR: u32 = 0xffffffff;
 pub struct FileTransferResponse {
     pub segment_flag: u32,
 }

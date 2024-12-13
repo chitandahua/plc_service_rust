@@ -11,7 +11,7 @@ use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::{MqttMessage, PayloadBody};
 use crate::protocol::app_data::{
     Afn, CurrentStatus, FileFlag, FileTransfer, FileTransferRequest, FileTransferResponse,
-    RunningStatusRequest, RunningStatusResponse, FILE_CHECK_ERROR
+    RunningStatusRequest, RunningStatusResponse, FILE_CHECK_ERROR,
 };
 use crate::protocol::Frame;
 use crate::request_info::{FrameKey, ReqInfo, UartMessage};
@@ -205,16 +205,15 @@ impl FileUpgrade {
 
                 let mut upgrade_result = UpgradeResult::TransferFailed;
                 let result = state.result.take().unwrap().and_then(|segment| {
-                    if segment != segment_offset {
+                    if segment as u32 == FILE_CHECK_ERROR {
+                        upgrade_result = UpgradeResult::FileError;
+                        Err(anyhow::anyhow!("file check error"))
+                    } else if segment != segment_offset {
                         Err(anyhow::anyhow!(format!(
                             "segment number not match, expect {}, got {}",
                             segment_offset, segment
                         )))
-                    } else if segment as u32 == FILE_CHECK_ERROR {
-                        upgrade_result = UpgradeResult::FileError;
-                        Err(anyhow::anyhow!("file check error"))
-                    }
-                    else {
+                    } else {
                         Ok(())
                     }
                 });

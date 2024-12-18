@@ -1,6 +1,5 @@
 use super::node_config::{self, NodeInfo};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::{mpsc, Condvar, Mutex, MutexGuard};
 use tracing::{debug, error, info};
@@ -58,22 +57,20 @@ struct AddAcqFiles;
 struct DelAcqFiles;
 struct ClearAcqFiles;
 
+#[derive(Debug, Deserialize)]
+struct MqttAddAcqFiles {
+    body: Vec<NodeInfo>,
+}
+
 impl AcqFilesOperation for AddAcqFiles {
     fn parse_node_infos(
         _node_config: &node_config::NodeConfig,
         message: &MqttMessage,
         _app: &str,
     ) -> Result<Vec<NodeInfo>> {
-        serde_json::from_str::<Value>(message.payload())
+        serde_json::from_str::<MqttAddAcqFiles>(message.payload())
+            .map(|n| n.body)
             .map_err(anyhow::Error::from)
-            .and_then(|v| {
-                v.get("body")
-                    .ok_or_else(|| anyhow::anyhow!("body not exist"))
-                    .map(|body_value| {
-                        serde_json::from_value::<Vec<NodeInfo>>(body_value.clone())
-                            .map_err(anyhow::Error::from)
-                    })
-            })?
     }
 
     fn operate_node_infos(
@@ -114,14 +111,31 @@ impl AcqFilesOperation for AddAcqFiles {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct MqttDelAcqFileAddr {
+    #[serde(rename = "acqAddr")]
+    acq_addr: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MqttDelAcqFiles {
+    body: Vec<MqttDelAcqFileAddr>,
+}
+
 impl AcqFilesOperation for DelAcqFiles {
     fn parse_node_infos(
         _node_config: &node_config::NodeConfig,
         message: &MqttMessage,
         _app: &str,
     ) -> Result<Vec<NodeInfo>> {
-        // 与 AddAcqFiles 相同的实现
-        AddAcqFiles::parse_node_infos(_node_config, message, _app)
+        serde_json::from_str::<MqttDelAcqFiles>(message.payload())
+            .map(|n| {
+                n.body
+                    .into_iter()
+                    .map(|addr| NodeInfo::new(addr.acq_addr, "0".to_string()))
+                    .collect::<Vec<NodeInfo>>()
+            })
+            .map_err(anyhow::Error::from)
     }
 
     fn operate_node_infos(

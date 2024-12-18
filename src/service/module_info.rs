@@ -225,8 +225,6 @@ struct ModuleInfoResponse {
     upgrade_max_pack_len: String,
     #[serde(rename = "upgradeActionWaitTime")]
     upgrade_action_wait_time: String,
-    #[serde(rename = "BroadcastDelaySuccess")]
-    broadcast_delay_success: String,
     #[serde(rename = "moduleaddr")]
     module_addr: String,
     #[serde(rename = "supportMaxSlaveNum")]
@@ -246,7 +244,6 @@ impl From<app_data::ModuleInfoResponse> for ModuleInfoResponse {
             package_max_len: module_info_response.max_packet_length.to_string(),
             upgrade_max_pack_len: module_info_response.max_packet_per_packet.to_string(),
             upgrade_action_wait_time: module_info_response.upgrade_wait_time.to_string(),
-            broadcast_delay_success: "NULL".to_string(),
             module_addr: module_info_response.main_node_addr.to_string(),
             support_max_slave_num: module_info_response.max_node_num.to_string(),
             support_slave_num: module_info_response.current_node_num.to_string(),

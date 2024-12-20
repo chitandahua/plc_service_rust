@@ -20,6 +20,7 @@ pub enum FileFlag {
     Slave = 8,
 }
 
+pub const FILE_TRANSFER_PREFIX_LEN: usize = 11;
 #[derive(Debug)]
 pub struct FileTransferRequest {
     file_flag: FileFlag,

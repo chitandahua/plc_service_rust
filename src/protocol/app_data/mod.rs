@@ -26,6 +26,7 @@ pub use data_trans::{DataTransfer, TransferFrameRequest, TransferFrameResponse};
 mod file_transfer;
 pub use file_transfer::{
     FileFlag, FileTransfer, FileTransferRequest, FileTransferResponse, FILE_CHECK_ERROR,
+    FILE_TRANSFER_PREFIX_LEN,
 };
 
 mod init;
@@ -171,6 +172,7 @@ pub fn module_id_format_string(format: ModuleIdFormat, data: &[u8]) -> String {
 
 const AFN_SIZE: usize = 1;
 const DATA_FLAG_SIZE: usize = 2;
+pub(crate) const APP_DATA_PREFIX_SIZE: usize = AFN_SIZE + DATA_FLAG_SIZE;
 
 #[derive(
     Debug, PartialEq, Eq, Clone, Copy, IntoPrimitive, TryFromPrimitive, strum_macros::Display,

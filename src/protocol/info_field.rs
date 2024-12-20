@@ -98,6 +98,13 @@ impl InfoField {
         }
     }
 
+    pub fn set_comm_model_mark(&mut self, comm_model_mark: u8) {
+        match self {
+            InfoField::Down(down) => down.comm_model_mark = comm_model_mark,
+            InfoField::Up(up) => up.comm_model_mark = comm_model_mark,
+        }
+    }
+
     pub fn seq_num(&self) -> u8 {
         match self {
             InfoField::Down(down) => down.seq_num,

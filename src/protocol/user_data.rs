@@ -96,6 +96,9 @@ impl fmt::Display for AddressField {
     }
 }
 
+pub const USER_DATA_PREFIX_SIZE: usize =
+    info_field::INFO_FIELD_SIZE + super::app_data::APP_DATA_PREFIX_SIZE;
+
 // user data
 #[derive(Debug, Clone)]
 pub struct UserData {

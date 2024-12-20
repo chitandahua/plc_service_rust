@@ -11,10 +11,11 @@ use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::{MqttMessage, PayloadBody};
 use crate::protocol::app_data::{
     Afn, CurrentStatus, FileFlag, FileTransfer, FileTransferRequest, FileTransferResponse,
-    RunningStatusRequest, RunningStatusResponse, FILE_CHECK_ERROR,
+    RunningStatusRequest, RunningStatusResponse, FILE_CHECK_ERROR, FILE_TRANSFER_PREFIX_LEN,
 };
-use crate::protocol::Frame;
+use crate::protocol::{Frame, FRAME_SIZE, USER_DATA_PREFIX_SIZE};
 use crate::request_info::{FrameKey, ReqInfo, UartMessage};
+use crate::service::module_info::MODULE_INFO;
 use crate::service::parse_response::{mqtt_info_request_uart_handler, UartResponse};
 use crate::service::{IntoMqttMessage, MqttReqInfo, ThreadPool};
 use crate::{
@@ -37,7 +38,7 @@ enum UpgradeResult {
     Success = 0,
     FileError = 1,
     TransferFailed = 2,
-    _OtherError = 255,
+    OtherError = 255,
 }
 
 #[derive(Debug, Default)]
@@ -138,15 +139,16 @@ impl FileUpgrade {
     ) -> Result<()> {
         tracing::debug!("mqtt file upgrade");
 
-        const FILE_DATA_SIZE: usize = 128; // 1024
         let request: MqttFileUpgradeRequest = serde_json::from_str(message.payload())?;
         // 读文件到buffer中
-        let mut file = match File::open(&request.file_path) {
-            Ok(file) => {
+        let content = match File::open(&request.file_path) {
+            Ok(mut file) => {
                 mqtt_msg_sender
                     .send(().into_mqtt_message(message.to_mqtt_req_info()))
                     .unwrap();
-                file
+                let mut content = Vec::new();
+                file.read_to_end(&mut content).unwrap();
+                content
             }
             Err(e) => {
                 tracing::error!(cause = ?e, "open file {} failed", request.file_path);
@@ -181,11 +183,14 @@ impl FileUpgrade {
             }
             state.start_upgrade();
 
-            let mut content = Vec::new();
-            file.read_to_end(&mut content).unwrap();
-            let segment_num = content.len() / FILE_DATA_SIZE;
+            // TODO 若有地址域 则需要加上地址域长度
+            const PREFIX_LEN: usize = FRAME_SIZE + USER_DATA_PREFIX_SIZE + FILE_TRANSFER_PREFIX_LEN;
+            let file_data_size: usize =
+                MODULE_INFO.get().unwrap().max_packet_per_packet as usize - PREFIX_LEN;
+            //const FILE_DATA_SIZE: usize = 128;
+            let segment_num = content.len().div_ceil(file_data_size);
 
-            for (segment_offset, file_data) in content.chunks(FILE_DATA_SIZE).enumerate() {
+            for (segment_offset, file_data) in content.chunks(file_data_size).enumerate() {
                 // TODO 子模块升级需要设置通信模块标识以及地址域？
                 mqtt_info_request_uart_handler::<FileTransferRequest>(
                     FileTransferRequest::new(
@@ -229,12 +234,22 @@ impl FileUpgrade {
         thread_pool.execute({
             let file_upgrade = self.clone();
             let uart_msg_sender = uart_msg_sender.clone();
+            let upgrade_wait_time = MODULE_INFO.get().unwrap().upgrade_wait_time as u64;
             move || {
                 let mut state = file_upgrade.upgrade_state.lock().unwrap();
-                // MODULE_INFO.get().unwrap().upgrade_wait_time as u64
-                let duration = Duration::from_secs(30);
+                const WAIT_TIME: u64 = 30;
+                let wait_total_count = upgrade_wait_time.div_ceil(WAIT_TIME);
+                let mut wait_count = 0;
+
                 state.status = UpgradeStatus::Upgrading;
-                while state.status == UpgradeStatus::Upgrading {
+                while state.status == UpgradeStatus::Upgrading && wait_count < wait_total_count {
+                    let wait_time = if wait_count == wait_total_count - 1 {
+                        upgrade_wait_time - wait_count * WAIT_TIME
+                    } else {
+                        WAIT_TIME
+                    };
+                    wait_count += 1;
+                    let duration = Duration::from_secs(wait_time);
                     let result = file_upgrade
                         .cond
                         .wait_timeout_while(state, duration, |state| state.result.is_none())
@@ -268,7 +283,12 @@ impl FileUpgrade {
                     }
                 }
 
-                state.finish_upgrade(UpgradeResult::Success);
+                if wait_count == wait_total_count {
+                    tracing::error!("file upgrade timeout {} s", upgrade_wait_time);
+                    state.finish_upgrade(UpgradeResult::OtherError);
+                } else {
+                    state.finish_upgrade(UpgradeResult::Success);
+                }
             }
         });
 

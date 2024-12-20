@@ -193,7 +193,7 @@ const HEADER_SIZE: usize = 3;
 const CTRL_FIELD_SIZE: usize = 1;
 const CHECK_SUM_SIZE: usize = 1;
 const TAIL_SIZE: usize = 1;
-const FRAME_SIZE: usize = HEADER_SIZE + CTRL_FIELD_SIZE + CHECK_SUM_SIZE + TAIL_SIZE;
+pub const FRAME_SIZE: usize = HEADER_SIZE + CTRL_FIELD_SIZE + CHECK_SUM_SIZE + TAIL_SIZE;
 const LAST_SIZE: usize = CHECK_SUM_SIZE + TAIL_SIZE;
 
 const HEADER_OFFSET: usize = 0;
@@ -330,6 +330,12 @@ impl Frame {
             .map(|b| format!("{:02X}", b))
             .collect::<Vec<String>>()
             .join(" ")
+    }
+
+    pub fn set_comm_model_mark(&mut self, comm_model_mark: u8) {
+        self.user_data
+            .info_field
+            .set_comm_model_mark(comm_model_mark);
     }
 }
 

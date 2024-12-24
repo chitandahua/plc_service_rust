@@ -388,9 +388,11 @@ impl UartMsgHandler {
         let fn_num = InitOperation::try_from(fn_num)
             .map_err(|_| UartHandlerError::UnsupportedAfnFn(afn, fn_num))?;
         match fn_num {
-            InitOperation::Data => {
-                PlcInit::uart_data_init_response(message, &self.mqtt_msg_sender)?
-            }
+            InitOperation::Data => PlcInit::uart_data_init_response(
+                message,
+                &self.services.meter_state,
+                &self.mqtt_msg_sender,
+            )?,
             _ => unreachable!(),
         }
         Ok(())

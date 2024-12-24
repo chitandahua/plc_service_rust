@@ -195,8 +195,10 @@ impl PlcInit {
 
     pub fn uart_data_init_response(
         message: UartMessage,
+        meter_state: &MeterState,
         sender: &mpsc::Sender<MqttMessage>,
     ) -> Result<()> {
+        meter_state.init_data();
         uart_response_handler::<ConfirmResponse, ()>(message, sender)
     }
 }

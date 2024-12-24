@@ -220,4 +220,8 @@ pub enum MqttResponseError {
     ModelOffline,
     #[error("invalid json request: {0}")]
     InvalidJson(String),
+    #[error("File is not exist")]
+    InvalidUpgradeFile,
+    #[error("already upgrading")]
+    AlreadyUpgrading,
 }

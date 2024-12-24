@@ -83,7 +83,7 @@ impl MeterState {
         Ok(())
     }
 
-    pub fn _init_data(&self) {
+    pub fn init_data(&self) {
         let mut state = self.state.lock().unwrap();
         state.init_data_count += 1;
     }

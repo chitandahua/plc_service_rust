@@ -1,6 +1,6 @@
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::PayloadBody;
-use crate::protocol::app_data::{self, Afn, RouteDataRead};
+use crate::protocol::app_data::{self, Afn, DataForward, RouteDataRead};
 use crate::protocol::{Address, AddressField, Frame};
 use crate::request_info::FrameKey;
 use crate::service::{parse_response::UartResponse, MqttReqInfo};
@@ -85,16 +85,14 @@ impl MonitorNodeOperation for MonitorNodeDelayRequest {
             )),
             app_data::MonitorNodeRequest::from(request),
         );
-        let req_info = ReqInfo::new(&frame, Some(mqtt_req_info));
+        let req_info = ReqInfo::new_with_key_and_origin(
+            &frame,
+            FrameKey::new(Afn::RouteDataRead, RouteDataRead::CommDelay as u8),
+            Some(mqtt_req_info),
+            FrameKey::new(Afn::RouteDataForward, DataForward::MonitorNode as u8),
+        );
 
-        UartMessage::new_with_extra_req_info(
-            req_info,
-            frame,
-            Some(ReqInfo::new_with_key_no_seq(
-                FrameKey::new(Afn::RouteDataRead, RouteDataRead::CommDelay as u8),
-                None,
-            )),
-        )
+        UartMessage::new(req_info, frame)
     }
 
     fn wait_response(monitor_node: &MonitorNode) -> impl IntoMqttMessage {

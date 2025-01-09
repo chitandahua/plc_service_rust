@@ -21,7 +21,6 @@ struct UartTimeout {
 
 struct UartReqInfo {
     req_info: Option<ReqInfo>,
-    extra_req_info: Option<ReqInfo>,
     concurrent_req_info: HashMap<u8, (ReqInfo, Guard)>,
     writer: StreamWriter,
 }
@@ -49,7 +48,6 @@ impl UartAgent {
         Ok(UartAgent {
             cur_req_info: Arc::new(Mutex::new(UartReqInfo {
                 req_info: None,
-                extra_req_info: None,
                 concurrent_req_info: HashMap::new(),
                 writer,
             })),
@@ -89,7 +87,6 @@ impl UartAgent {
                     let UartMessage {
                         req_info,
                         frame,
-                        extra_req_info,
                         timeout,
                     } = req_msg;
                     let is_response = frame.is_master_response();
@@ -102,16 +99,15 @@ impl UartAgent {
                         frame.to_hex_string()
                     );
 
-                    // 若有extra_req_info 为响应实则当作请求
+                    // 若req_Info有原始请求的key 为响应实则当作请求
                     // 当前仅14H-F3的回复
-                    let is_response = is_response && extra_req_info.is_none();
+                    let is_response = is_response && req_info.origin_req_key.is_none();
 
                     let mut cnt = 0;
                     {
                         let bytes = Into::<Vec<u8>>::into(frame);
                         let mut lock = cur_req_info.lock().unwrap();
                         lock.req_info = Some(req_info);
-                        lock.extra_req_info = extra_req_info;
 
                         while cnt < MAX_RETRY {
                             match lock.writer.write_request(&bytes) {
@@ -151,8 +147,7 @@ impl UartAgent {
                                 req.frame_key().to_tuple(),
                                 req.seq_num(),
                             );
-                            let _ = uart_timeout_handler
-                                .handle_timeout(req, lock.extra_req_info.take());
+                            let _ = uart_timeout_handler.handle_timeout(req);
                             consecutive_timeouts.fetch_add(1, Ordering::Relaxed);
                         } else {
                             consecutive_timeouts.store(0, Ordering::Relaxed);
@@ -185,7 +180,7 @@ impl UartAgent {
                                 // 若超时 且当前只有mqtt会并行请求 故unwrap
                                 lock.concurrent_req_info.remove(&seq).unwrap().0
                             };
-                            let _ = uart_timeout_handler.handle_timeout(req_info, None);
+                            let _ = uart_timeout_handler.handle_timeout(req_info);
                         }
                     });
                     {
@@ -206,13 +201,17 @@ impl UartAgent {
             match reader.read_response() {
                 Ok(Some(response)) => {
                     debug!("uart response {}", hex::encode(response.to_bytes()));
-                    let mut extra_req_info = None;
 
                     let req_info = {
                         // 根据response获取cmd
                         let mut is_serial_req = false;
                         let mut lock = cur_req_info.lock().unwrap();
-                        let info = if response.is_slave_report() && lock.extra_req_info.is_none() {
+                        let info = if response.is_slave_report()
+                            && lock
+                                .req_info
+                                .as_ref()
+                                .is_none_or(|r| r.origin_req_key.is_none())
+                        {
                             Some(ReqInfo::new(&response, None))
                         } else if let Some(concurrent_req) =
                             lock.concurrent_req_info.remove(&response.get_seq())
@@ -226,14 +225,7 @@ impl UartAgent {
                         {
                             is_serial_req = true;
                             // 调用对应处理函数 锁外调用
-                            match lock.extra_req_info.is_some() {
-                                true => {
-                                    extra_req_info = lock.req_info.take();
-                                    // 根据extra_req_info寻找实际的回调
-                                    lock.extra_req_info.take()
-                                }
-                                false => lock.req_info.take(),
-                            }
+                            lock.req_info.take()
                         } else {
                             // no request or not match
                             warn!("invalid response");
@@ -250,11 +242,7 @@ impl UartAgent {
                         continue;
                     }
 
-                    match handler.uart_msg_handler(UartMessage::new_with_extra_req_info(
-                        req_info.unwrap(),
-                        response,
-                        extra_req_info,
-                    )) {
+                    match handler.uart_msg_handler(UartMessage::new(req_info.unwrap(), response)) {
                         Ok(_) => {}
                         Err(e) => {
                             error!(casue = ?e, "handle uart response error");

@@ -223,19 +223,12 @@ impl IdentifyArea {
                     info = result.0;
                     if result.1.timed_out() {
                         let frame = Frame::new_request(None, RunningStatusRequest);
-                        let req_info = ReqInfo::new(&frame, None);
+                        let req_info = ReqInfo::new_with_origin_req_key(
+                            &frame,
+                            FrameKey::new(Afn::RouteSet, RouteSet::ActiveNodeRegister as u8),
+                        );
                         uart_msg_sender
-                            .send(UartMessage::new_with_extra_req_info(
-                                req_info,
-                                frame,
-                                Some(ReqInfo::new_with_key_no_seq(
-                                    FrameKey::new(
-                                        Afn::RouteSet,
-                                        RouteSet::ActiveNodeRegister as u8,
-                                    ),
-                                    None,
-                                )),
-                            ))
+                            .send(UartMessage::new(req_info, frame))
                             .unwrap();
 
                         // 等待回复

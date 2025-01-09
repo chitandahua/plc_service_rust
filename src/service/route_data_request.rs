@@ -24,7 +24,16 @@ impl RouteDataRequest {
         monitor_node: MonitorNode,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
     ) -> Result<()> {
-        let req_info = ReqInfo::new(&message.frame, None);
+        let original_req_key = message
+            .req_info
+            .origin_req_key
+            .ok_or(anyhow::anyhow!("no original request key"))?;
+        let req_info = ReqInfo::new_with_key_and_origin(
+            &message.frame,
+            original_req_key.clone(),
+            None,
+            original_req_key.clone(),
+        );
         let frame = Frame::new_response(
             message.frame.get_seq(),
             None,
@@ -32,18 +41,14 @@ impl RouteDataRequest {
         );
         let request = CommDelayRequest::try_from(message.frame.into_app_data())?;
 
-        let original_req_info = message
-            .extra_req_info
-            .ok_or(anyhow::anyhow!("no original request info"))?;
-        match original_req_info.frame_key().to_tuple() {
+        match original_req_key.to_tuple() {
             (Afn::RouteDataForward, 1) => {
                 monitor_node.uart_notify_monitor_node_dalay(request.delay);
             }
             _ => unreachable!(),
         }
 
-        let response =
-            UartMessage::new_with_extra_req_info(req_info, frame, Some(original_req_info));
+        let response = UartMessage::new(req_info, frame);
         uart_msg_sender.send(response).unwrap();
 
         Ok(())

@@ -6,7 +6,7 @@ use crate::MqttTopic;
 use std::any::Any;
 
 // TODO 使用enum？
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FrameKey(Afn, u8);
 
 impl FrameKey {
@@ -73,6 +73,7 @@ pub struct ReqInfo {
     mqtt_req_info: Option<MqttReqInfo>,
     frame_key: FrameKey,
     seq_num: u8,
+    pub origin_req_key: Option<FrameKey>,
 }
 
 impl ReqInfo {
@@ -81,14 +82,7 @@ impl ReqInfo {
             mqtt_req_info,
             frame_key: FrameKey::new(frame.afn(), frame.fn_num()),
             seq_num: frame.get_seq(),
-        }
-    }
-
-    pub fn new_with_key_no_seq(frame_key: FrameKey, mqtt_req_info: Option<MqttReqInfo>) -> Self {
-        ReqInfo {
-            mqtt_req_info,
-            frame_key,
-            seq_num: 0,
+            origin_req_key: None,
         }
     }
 
@@ -101,6 +95,30 @@ impl ReqInfo {
             mqtt_req_info,
             frame_key,
             seq_num: frame.get_seq(),
+            origin_req_key: None,
+        }
+    }
+
+    pub fn new_with_origin_req_key(frame: &Frame, origin_req_key: FrameKey) -> Self {
+        ReqInfo {
+            mqtt_req_info: None,
+            frame_key: FrameKey::new(frame.afn(), frame.fn_num()),
+            seq_num: frame.get_seq(),
+            origin_req_key: Some(origin_req_key),
+        }
+    }
+
+    pub fn new_with_key_and_origin(
+        frame: &Frame,
+        frame_key: FrameKey,
+        mqtt_req_info: Option<MqttReqInfo>,
+        origin_req_key: FrameKey,
+    ) -> Self {
+        ReqInfo {
+            mqtt_req_info,
+            frame_key,
+            seq_num: frame.get_seq(),
+            origin_req_key: Some(origin_req_key),
         }
     }
 
@@ -118,6 +136,7 @@ impl ReqInfo {
             )),
             frame_key: FrameKey::new(frame.afn(), frame.fn_num()),
             seq_num: frame.get_seq(),
+            origin_req_key: None,
         }
     }
 
@@ -145,7 +164,6 @@ impl ReqInfo {
 pub struct UartMessage {
     pub req_info: ReqInfo,
     pub frame: Frame,
-    pub extra_req_info: Option<ReqInfo>,
     pub timeout: Option<Duration>,
 }
 
@@ -154,7 +172,6 @@ impl UartMessage {
         UartMessage {
             req_info,
             frame,
-            extra_req_info: None,
             timeout: None,
         }
     }
@@ -163,21 +180,7 @@ impl UartMessage {
         UartMessage {
             req_info,
             frame,
-            extra_req_info: None,
             timeout: Some(timeout),
-        }
-    }
-
-    pub fn new_with_extra_req_info(
-        req_info: ReqInfo,
-        frame: Frame,
-        extra_req_info: Option<ReqInfo>,
-    ) -> Self {
-        UartMessage {
-            req_info,
-            frame,
-            extra_req_info,
-            timeout: None,
         }
     }
 }

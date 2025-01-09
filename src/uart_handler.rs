@@ -1,4 +1,3 @@
-use anyhow::ensure;
 use std::sync::{mpsc, Arc};
 use tracing::debug;
 
@@ -111,10 +110,7 @@ impl UartMsgHandler {
 
     fn uart_init_handler(&mut self, message: UartMessage) -> Result<()> {
         let init_err_msg = "uart init invalid message";
-        let (afn, fn_num) = match message.extra_req_info {
-            Some(ref extra_req_info) => extra_req_info.frame_key().to_tuple(),
-            None => message.req_info.frame_key().to_tuple(),
-        };
+        let (afn, fn_num) = message.req_info.frame_key().to_tuple();
         if afn == Afn::QueryData {
             let fn_num = QueryData::try_from(fn_num).expect(init_err_msg);
             match fn_num {
@@ -163,6 +159,7 @@ impl UartMsgHandler {
                 }
                 Afn::RouteGet => {
                     // 内部搜表时 查询运行状态 工作标志 搜表是否结束
+                    let fn_num = message.req_info.origin_req_key.as_ref().unwrap().fn_num();
                     let fn_num = RouteQuery::try_from(fn_num).expect("invalid route get fn");
                     match fn_num {
                         RouteQuery::RunningStatus => match message.req_info.frame_key().afn() {
@@ -178,6 +175,9 @@ impl UartMsgHandler {
                         },
                         _ => unreachable!(),
                     }
+                }
+                Afn::RouteDataForward => {
+                    self.uart_route_data_forward_handler(message)?
                 }
                 _ => unreachable!(),
             }
@@ -479,7 +479,7 @@ impl UartTimeoutHandler {
         }
     }
 
-    pub fn handle_timeout(&self, req_info: ReqInfo, extra_req_info: Option<ReqInfo>) -> Result<()> {
+    pub fn handle_timeout(&self, req_info: ReqInfo) -> Result<()> {
         let (afn, fn_num) = req_info.frame_key().to_tuple();
 
         match afn {
@@ -489,7 +489,7 @@ impl UartTimeoutHandler {
             Afn::RouteSet => self.handle_route_set_timeout(fn_num, req_info)?,
             Afn::RouteDataForward => self.handle_route_data_forward_timeout(fn_num)?,
             Afn::DataForward => self.handle_data_forward_timeout(fn_num)?,
-            Afn::RouteDataRead => self.handle_route_data_read_timeout(fn_num, extra_req_info)?,
+            Afn::RouteDataRead => self.handle_route_data_read_timeout(fn_num, req_info)?,
             Afn::RouteGet => self.handle_route_get_timeout(fn_num, req_info)?,
             Afn::FileTransfer => self.handle_file_transfer_timeout(fn_num, req_info)?,
             _ => self.default_timeout_handler(req_info),
@@ -554,21 +554,15 @@ impl UartTimeoutHandler {
         Ok(())
     }
 
-    fn handle_route_data_read_timeout(
-        &self,
-        fn_num: u8,
-        extra_req_info: Option<ReqInfo>,
-    ) -> Result<()> {
+    fn handle_route_data_read_timeout(&self, fn_num: u8, req_info: ReqInfo) -> Result<()> {
         let fn_num = RouteDataRead::try_from(fn_num)
             .map_err(|_| UartHandlerError::UnsupportedAfnFn(Afn::RouteDataRead, fn_num))?;
         match fn_num {
             RouteDataRead::CommDelay => {
-                ensure!(
-                    extra_req_info.is_some(),
-                    anyhow::anyhow!("missing extra req info")
-                );
-
-                let (afn, fn_num) = extra_req_info.unwrap().frame_key().to_tuple();
+                let (afn, fn_num) = req_info
+                    .origin_req_key
+                    .ok_or(UartHandlerError::NoOriginReqKey)?
+                    .to_tuple();
                 match afn {
                     Afn::RouteDataForward => {
                         let fn_num = DataForward::try_from(fn_num)
@@ -622,4 +616,6 @@ pub enum UartHandlerError {
     UnsupportedAfn(Afn),
     #[error("unsupported afn: {:#02x}, fn: {1}", *.0 as u8)]
     UnsupportedAfnFn(Afn, u8),
+    #[error("no origin req key")]
+    NoOriginReqKey,
 }

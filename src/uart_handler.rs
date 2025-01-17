@@ -9,7 +9,7 @@ use crate::protocol::app_data::{
 use crate::request_info::{MqttReqInfo, ReqInfo};
 use crate::service::{
     Broadcast, ControlCmd, DebugMethod, EventReport, HplcInfo, IdentifyArea, MasterAddress,
-    MeterState, ModuleService, PlcInit, RouteDataRequest,
+    MeterState, ModuleService, PlcInit, RouteDataRequest, MODULE_INFO,
 };
 use crate::{ModuleInfo, MqttMessage, MqttPayload};
 use crate::{MqttResponseError, Result, UartHandler, UartMessage};
@@ -93,8 +93,21 @@ impl UartMsgHandler {
                 match query_fn_num {
                     QueryData::GetModuleInfo => {
                         match ModuleInfo::slave_module_info_report(message, &self.uart_msg_sender) {
-                            Ok(address) => self.plc_init.update_address(address),
-                            Err(e) => self.plc_init.notify(Err(e)),
+                            Ok(response) => {
+                                // 通过上报模块运行信息标识更新结束
+                                if self.services.file_upgrade.is_upgrading() {
+                                    self.services.file_upgrade.upgrade_finished();
+                                    let _ = MODULE_INFO.set(response);
+                                } else {
+                                    let address = response.main_node_addr.clone();
+                                    MODULE_INFO.get_or_init(move || response);
+                                    self.plc_init.update_address(address)
+                                }
+                            }
+                            Err(_e) => {
+                                unreachable!()
+                                //self.plc_init.notify(Err(e)),
+                            }
                         }
                     }
                     _ => anyhow::bail!(UartHandlerError::UnsupportedAfnFn(afn, fn_num)),
@@ -176,9 +189,7 @@ impl UartMsgHandler {
                         _ => unreachable!(),
                     }
                 }
-                Afn::RouteDataForward => {
-                    self.uart_route_data_forward_handler(message)?
-                }
+                Afn::RouteDataForward => self.uart_route_data_forward_handler(message)?,
                 _ => unreachable!(),
             }
         }

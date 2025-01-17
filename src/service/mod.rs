@@ -32,7 +32,7 @@ mod meter_state;
 pub use meter_state::MeterState;
 
 mod module_info;
-pub use module_info::ModuleInfo;
+pub use module_info::{ModuleInfo, MODULE_INFO};
 
 mod master_address;
 pub use master_address::MasterAddress;

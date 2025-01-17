@@ -26,7 +26,7 @@ impl ModuleInfo {
     pub fn slave_module_info_report(
         message: UartMessage,
         uart_msg_sender: &mpsc::Sender<UartMessage>,
-    ) -> Result<Address> {
+    ) -> Result<app_data::ModuleInfoResponse> {
         let seq = message.frame.get_seq();
         let response = UartResponse::<app_data::ModuleInfoResponse>::try_from(message.frame)?;
 
@@ -37,9 +37,7 @@ impl ModuleInfo {
                 let req_info = ReqInfo::new(&response_frame, None);
                 let _ = uart_msg_sender.send(UartMessage::new(req_info, response_frame));
 
-                let address = response.main_node_addr.clone();
-                MODULE_INFO.get_or_init(move || response);
-                Ok(address)
+                Ok(response)
             }
         }
     }

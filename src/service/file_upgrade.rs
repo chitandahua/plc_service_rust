@@ -10,13 +10,13 @@ use serde::{Deserialize, Serialize};
 use crate::mqtt_handler::MqttTopicType;
 use crate::mqtt_message::{MqttMessage, PayloadBody};
 use crate::protocol::app_data::{
-    Afn, CurrentStatus, FileFlag, FileTransfer, FileTransferRequest, FileTransferResponse,
+    Afn, FileFlag, FileTransfer, FileTransferRequest, FileTransferResponse,
     RunningStatusRequest, RunningStatusResponse, FILE_CHECK_ERROR, FILE_TRANSFER_PREFIX_LEN,
 };
 use crate::protocol::{Frame, FRAME_SIZE, USER_DATA_PREFIX_SIZE};
 use crate::request_info::{FrameKey, ReqInfo, UartMessage};
 use crate::service::module_info::MODULE_INFO;
-use crate::service::parse_response::{mqtt_info_request_uart_handler, UartResponse};
+use crate::service::parse_response::{UartResponse, mqtt_info_request_uart_handler};
 use crate::service::{IntoMqttMessage, MqttReqInfo, ThreadPool};
 use crate::{
     impl_into_mqtt_message, register_mqtt_request_topics, MqttMsgHandler, MqttResponseError, Result,
@@ -130,6 +130,18 @@ impl FileUpgrade {
         );
     }
 
+    pub fn is_upgrading(&self) -> bool {
+        let state = self.upgrade_state.lock().unwrap();
+        state.upgrading
+    }
+
+    pub fn upgrade_finished(&self) {
+        let mut state = self.upgrade_state.lock().unwrap();
+        state.result = Some(Ok(0));
+        state.status = UpgradeStatus::Finished;
+        self.cond.notify_one();
+    }
+
     pub fn mqtt_file_upgrade(
         &self,
         message: MqttMessage,
@@ -183,7 +195,6 @@ impl FileUpgrade {
             }
             state.start_upgrade();
 
-            // TODO 若有地址域 则需要加上地址域长度
             const PREFIX_LEN: usize = FRAME_SIZE + USER_DATA_PREFIX_SIZE + FILE_TRANSFER_PREFIX_LEN;
             let file_data_size: usize =
                 MODULE_INFO.get().unwrap().max_packet_per_packet as usize - PREFIX_LEN;
@@ -191,7 +202,6 @@ impl FileUpgrade {
             let segment_num = content.len().div_ceil(file_data_size);
 
             for (segment_offset, file_data) in content.chunks(file_data_size).enumerate() {
-                // TODO 子模块升级需要设置通信模块标识以及地址域？
                 mqtt_info_request_uart_handler::<FileTransferRequest>(
                     FileTransferRequest::new(
                         file_flag,
@@ -234,7 +244,11 @@ impl FileUpgrade {
         thread_pool.execute({
             let file_upgrade = self.clone();
             let uart_msg_sender = uart_msg_sender.clone();
-            let upgrade_wait_time = MODULE_INFO.get().unwrap().upgrade_wait_time as u64;
+            let upgrade_wait_time = if file_flag == FileFlag::Module {
+                MODULE_INFO.get().unwrap().upgrade_wait_time as u64
+            } else {
+                1200
+            };
             move || {
                 let mut state = file_upgrade.upgrade_state.lock().unwrap();
                 const WAIT_TIME: u64 = 30;
@@ -242,44 +256,63 @@ impl FileUpgrade {
                 let mut wait_count = 0;
 
                 state.status = UpgradeStatus::Upgrading;
-                while state.status == UpgradeStatus::Upgrading && wait_count < wait_total_count {
-                    let wait_time = if wait_count == wait_total_count - 1 {
-                        upgrade_wait_time - wait_count * WAIT_TIME
-                    } else {
-                        WAIT_TIME
-                    };
-                    wait_count += 1;
-                    let duration = Duration::from_secs(wait_time);
-                    let result = file_upgrade
-                        .cond
-                        .wait_timeout_while(state, duration, |state| state.result.is_none())
-                        .unwrap();
-                    state = result.0;
-                    if result.1.timed_out() {
-                        // 查询状态
-                        let frame = Frame::new_request(None, RunningStatusRequest);
-                        let req_info = ReqInfo::new_with_origin_req_key(
-                            &frame,
-                            FrameKey::new(Afn::FileTransfer, FileTransfer::Method as u8),
-                        );
-                        uart_msg_sender
-                            .send(UartMessage::new(req_info, frame))
-                            .unwrap();
-
-                        // 等待回复
-                        state = file_upgrade
+                while state.status == UpgradeStatus::Upgrading {
+                    if file_flag == FileFlag::Module {
+                        let result = file_upgrade
                             .cond
-                            .wait_while(state, |state| state.result.is_none())
+                            .wait_timeout_while(
+                                state,
+                                Duration::from_secs(upgrade_wait_time),
+                                |state| state.result.is_none(),
+                            )
                             .unwrap();
-                        if let Err(e) = state.result.take().unwrap() {
-                            tracing::error!(cause = ?e, "get running status failed");
+                        state = result.0;
+                        if result.1.timed_out() {
+                            break;
                         }
                     } else {
-                        state.result.take();
+                        let wait_time = if wait_count == wait_total_count - 1 {
+                            upgrade_wait_time - wait_count * WAIT_TIME
+                        } else {
+                            WAIT_TIME
+                        };
+                        wait_count += 1;
+                        let duration = Duration::from_secs(wait_time);
+                        let result = file_upgrade
+                            .cond
+                            .wait_timeout_while(state, duration, |state| state.result.is_none())
+                            .unwrap();
+                        state = result.0;
+                        if result.1.timed_out() {
+                            // 查询状态
+                            let frame = Frame::new_request(None, RunningStatusRequest);
+                            let req_info = ReqInfo::new_with_origin_req_key(
+                                &frame,
+                                FrameKey::new(Afn::FileTransfer, FileTransfer::Method as u8),
+                            );
+                            uart_msg_sender
+                                .send(UartMessage::new(req_info, frame))
+                                .unwrap();
+
+                            // 等待回复
+                            state = file_upgrade
+                                .cond
+                                .wait_while(state, |state| state.result.is_none())
+                                .unwrap();
+                            if let Err(e) = state.result.take().unwrap() {
+                                tracing::error!(cause = ?e, "get running status failed");
+                            }
+                        } else {
+                            state.result.take();
+                        }
+
+                        if wait_count == wait_total_count {
+                            break;
+                        }
                     }
                 }
 
-                if wait_count == wait_total_count {
+                if state.status == UpgradeStatus::Upgrading {
                     tracing::error!("file upgrade timeout {} s", upgrade_wait_time);
                     state.finish_upgrade(UpgradeResult::OtherError);
                 } else {
@@ -304,7 +337,7 @@ impl FileUpgrade {
         let mut state = self.upgrade_state.lock().unwrap();
         match result {
             Ok(status) => {
-                if status.current_status() != CurrentStatus::Upgrading {
+                if status.running_status.work_flag == 0 {
                     tracing::debug!("upgrade finished");
                     state.status = UpgradeStatus::Finished;
                 }
